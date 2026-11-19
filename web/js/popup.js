@@ -304,6 +304,7 @@ async function run(opts = {}) {
 
   el.cards.replaceChildren();
   const jobs = [];
+  let lazy = null;
   if (mode === 'translate') {
     const term = looksLikeTerm(text, src) && (s.yandex || s.google);
     if (s.yandex) jobs.push(runMachine('yandex', text, src, tgt, ctrl.signal));
@@ -314,10 +315,11 @@ async function run(opts = {}) {
       c.foot.hidden = true;
       c.time.textContent = '点开或 Ctrl+Enter 查询';
       el.cards.append(c.root);
-      state.lazyDeepSeek = () => {
+      lazy = () => {
         c.root.remove();
         runDeepSeek(text, src, tgt, mode, ctrl.signal, c.root);
       };
+      state.lazyDeepSeek = lazy;
     } else {
       jobs.push(runDeepSeek(text, src, tgt, mode, ctrl.signal));
     }
@@ -325,6 +327,12 @@ async function run(opts = {}) {
     jobs.push(runDeepSeek(text, src, tgt, mode, ctrl.signal));
   }
   await Promise.allSettled(jobs);
+  // 查单词：机翻都出来了、也没点开 DeepSeek → 把这个词记进历史（DeepSeek 的结果会另外记）
+  if (lazy && state.lazyDeepSeek === lazy && !ctrl.signal.aborted) {
+    store
+      .putLookup({ device: s.device, from: 'popup', src, tgt, text, results: state.result })
+      .catch((e) => console.warn('保存历史失败', e));
+  }
   if (state.ctrl === ctrl) {
     state.ctrl = null;
     setBusy(false);

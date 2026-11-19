@@ -8,6 +8,8 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -19,6 +21,9 @@ import android.widget.Toast;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+
 /**
  * 全屏窗口 + WebView，打开 GitHub Pages 上的 sheet.html（界面全部由网页画）。
  *
@@ -26,7 +31,9 @@ import org.json.JSONObject;
  *   getInitial()  → {"text": 选中的文字, "readonly": 能不能替换回去, "source": "select" | "launcher"}
  *   postMessage() ← {"action": "close"} 关闭；{"action": "replace", "text": ...} 把结果替换回原来的输入框
  *   copy(text) / paste() / showKeyboard()
- *   返回键：先问网页（window.lhBack()，结果页 → 选择页），网页没处理就关闭
+ *   saveFile(name, text)：历史「导出」——WebView 不支持网页下载，改成系统的「另存为」
+ *   历史「导入」的 <input type=file>：由下面的 WebChromeClient 打开系统的选文件
+ *   返回键：先问网页（window.lhBack()，有结果时 → 回到输入），网页没处理就关闭
  */
 public class SheetActivity extends Activity {
 
@@ -34,8 +41,15 @@ public class SheetActivity extends Activity {
     /** 只允许在这个目录下跳转（sheet.html、设置页 index.html#settings 等） */
     private static final String SCOPE = HOME.getPath().substring(0, HOME.getPath().lastIndexOf('/') + 1);
 
+    private static final int REQ_SAVE = 1;
+    private static final int REQ_PICK = 2;
+
     private WebView web;
     private ClipboardManager clipboard;
+    /** 「另存为」选好位置后要写进去的内容 */
+    private String pendingSave;
+    /** 网页在等选好的文件 */
+    private ValueCallback<Uri[]> fileCallback;
     private String initial = "{}";
     /** 当前页面是不是我们自己的网页（AndroidBridge 只给自己的网页用） */
     private volatile boolean trusted = false;
@@ -59,6 +73,7 @@ public class SheetActivity extends Activity {
         s.setMediaPlaybackRequiresUserGesture(true);
         web.addJavascriptInterface(new Bridge(), "AndroidBridge");
         web.setWebViewClient(new Client());
+        web.setWebChromeClient(new Chrome());
         setContentView(web);
         trusted = true; // 第一页就是我们自己的网页；之后每次跳转都会重新判断
         web.loadUrl(BuildConfig.SHEET_URL);
@@ -122,6 +137,34 @@ public class SheetActivity extends Activity {
     }
 
     @Override
+    @SuppressWarnings("deprecation")
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQ_PICK) {
+            if (fileCallback != null) {
+                Uri uri = resultCode == RESULT_OK && data != null ? data.getData() : null;
+                fileCallback.onReceiveValue(uri == null ? null : new Uri[] { uri });
+                fileCallback = null;
+            }
+            return;
+        }
+        if (requestCode == REQ_SAVE) {
+            String text = pendingSave;
+            pendingSave = null;
+            Uri uri = resultCode == RESULT_OK && data != null ? data.getData() : null;
+            if (uri == null || text == null) return; // 取消了
+            try (OutputStream os = getContentResolver().openOutputStream(uri, "w")) {
+                if (os == null) throw new java.io.IOException("no stream");
+                os.write(text.getBytes(StandardCharsets.UTF_8));
+                Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                Toast.makeText(this, R.string.save_failed, Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    @Override
     protected void onDestroy() {
         if (web != null) {
             web.removeJavascriptInterface("AndroidBridge");
@@ -175,8 +218,47 @@ public class SheetActivity extends Activity {
         }
     }
 
+    /** 网页里的 <input type=file>（历史「导入」）：打开系统的选文件 */
+    private final class Chrome extends WebChromeClient {
+        @Override
+        @SuppressWarnings("deprecation")
+        public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+            if (!trusted) return false;
+            if (fileCallback != null) fileCallback.onReceiveValue(null); // 上一次没选完的就当取消
+            fileCallback = callback;
+            // 不用网页给的类型（.json 在很多文件管理器里不算 application/json），什么文件都能选，由网页自己检查内容
+            Intent pick = new Intent(Intent.ACTION_GET_CONTENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+            try {
+                startActivityForResult(pick, REQ_PICK);
+                return true;
+            } catch (Exception e) {
+                fileCallback = null;
+                return false;
+            }
+        }
+    }
+
     /** 网页里的 window.AndroidBridge。这些方法在后台线程上被调用。 */
     final class Bridge {
+        @JavascriptInterface
+        @SuppressWarnings("deprecation")
+        public void saveFile(String name, String text) {
+            if (!trusted || text == null) return;
+            runOnUiThread(() -> {
+                pendingSave = text;
+                Intent save = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                        .addCategory(Intent.CATEGORY_OPENABLE)
+                        .setType("application/json")
+                        .putExtra(Intent.EXTRA_TITLE, name == null || name.isEmpty() ? "lang-helper.json" : name);
+                try {
+                    startActivityForResult(save, REQ_SAVE);
+                } catch (Exception e) {
+                    pendingSave = null;
+                    Toast.makeText(SheetActivity.this, R.string.save_failed, Toast.LENGTH_LONG).show();
+                }
+            });
+        }
+
         @JavascriptInterface
         public String getInitial() {
             return trusted ? initial : "{}";

@@ -4,4 +4,6 @@
     <!-- Label in the text-selection menu (PROCESS_TEXT) -->
     <string name="menu_label">lang-helper</string>
     <string name="offline">没有网络，打不开 lang-helper（第一次打开必须联网）</string>
+    <string name="saved">已保存</string>
+    <string name="save_failed">保存失败</string>
 </resources>

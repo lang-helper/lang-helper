@@ -3,7 +3,8 @@
 // entry = {
 //   id, ts, device, mode, register, kind, lang,
 //   input, output, notes: string[], model, promptVersion,
-//   starred, reviewed, synced
+//   starred, reviewed, synced,
+//   alts?: { yandex, google }   // 只查了免费机翻的单词（model 是 'google' / 'yandex'）
 // }
 
 const DB_NAME = 'lang-helper';
@@ -53,6 +54,34 @@ export async function update(id, patch) {
   Object.assign(e, patch);
   await put(e);
   return e;
+}
+
+/**
+ * 查单词时只看了免费机翻（Yandex / Google），没问 DeepSeek：也记一条，方便以后复习。
+ * output 优先用 Google 的；两家的结果都存在 alts 里。
+ */
+export function putLookup({ device, from, src, tgt, text, results }) {
+  const output = results.google || results.yandex || '';
+  if (!output) return Promise.resolve();
+  return put({
+    id: newId(),
+    ts: Date.now(),
+    device,
+    mode: tgt, // 和 DeepSeek 的记录一样按目标语言归类（ja 写日语 / zh 转中文 / en 写英文）
+    register: null,
+    kind: 'word',
+    lang: src,
+    input: text,
+    output,
+    notes: [],
+    alts: { yandex: results.yandex || '', google: results.google || '' },
+    model: results.google ? 'google' : 'yandex',
+    promptVersion: null,
+    from,
+    starred: false,
+    reviewed: false,
+    synced: false,
+  });
 }
 
 export function bulkPut(entries) {

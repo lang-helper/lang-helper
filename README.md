@@ -99,6 +99,7 @@ Clicking the target chip is the same as `Tab`. Short all-kanji words (e.g. 会�
 - **Looks like a single word** (short, with no punctuation, particles, verb endings, pronouns or function words) → **Yandex + Google** only; the DeepSeek card stays collapsed until you open it or press `Ctrl+Enter`. Examples: 炊飯器, 根回し, 打ち合わせ, 明日の会議, 电饭煲, 不好意思, follow up.
 - **Sentence** → **Yandex + Google + DeepSeek** together. Examples: 今日は暑い, 確認しました, 修好了, 麻烦你了, Let's go now.
 - When translating, DeepSeek returns only the result, no notes.
+- History: DeepSeek results are saved as before. A single-word lookup where you didn't open DeepSeek is saved too (Google's result as the main one, both Yandex's and Google's kept), so words show up in history for review.
 
 **Polish**: DeepSeek only, with changes highlighted and notes. Text is polished in its own language; Chinese or mixed Chinese/Japanese is "written as Japanese" (Tab → as English). When polishing into Japanese, click the target chip to change the register (auto → です・ます → タメ口 → formal).
 
@@ -156,6 +157,7 @@ There is a single screen with two states:
 3. Tap the source box (or the ‹ arrow, or press Back) to go back to typing: the box expands and the buttons return.
 4. Each result card has large buttons across the bottom: **Copy** (stays open) and **Replace** (only when the text came in from an editable field via the selection menu: puts the result in place of the original and closes).
 5. Back key: results → typing → close.
+6. Gear → Settings; the history icon is in the settings page's top bar. **Export** opens Android's "Save as" (pick e.g. Downloads); **Import** opens the file picker. The app's history lives only inside the app and is deleted on uninstall, so export it now and then. Text you typed is kept when you go to Settings and come back.
 
 The app also registers a **lang-helper** entry in the text-selection menu (PROCESS_TEXT), but some phones (e.g. HyperOS) don't show third-party entries there.
 

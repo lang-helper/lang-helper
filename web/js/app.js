@@ -5,7 +5,7 @@ import { splitOutput } from './output.js';
 import { detectLang, detectKind, describeInput } from './detect.js';
 import { diff, renderDiff } from './diff.js';
 import * as store from './history.js';
-import { initBridge, isEmbedded, sendToShell, shellKind, setShellPage } from './bridge.js';
+import { initBridge, isEmbedded, sendToShell, shellKind, setShellPage, shellSaveFile } from './bridge.js';
 import { createWikiView } from './wiki-ui.js';
 
 const $ = (id) => document.getElementById(id);
@@ -793,13 +793,14 @@ function bindMain() {
   $('h-more').addEventListener('click', () => renderHistory(false));
   $('h-export').addEventListener('click', async () => {
     const entries = await store.all();
-    const blob = new Blob(
-      [JSON.stringify({ app: 'lang-helper', version: 1, exportedAt: new Date().toISOString(), entries }, null, 1)],
-      { type: 'application/json' },
-    );
+    const json = JSON.stringify({ app: 'lang-helper', version: 1, exportedAt: new Date().toISOString(), entries }, null, 1);
+    const name = `lang-helper-history-${ymd()}.json`;
+    // 安卓 App 里：交给壳弹出系统的「另存为」（保存好了壳会提示）
+    if (shellSaveFile(name, json)) return;
+    const blob = new Blob([json], { type: 'application/json' });
     const a = make('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `lang-helper-history-${ymd()}.json`;
+    a.download = name;
     document.body.append(a);
     a.click();
     a.remove();

@@ -44,7 +44,8 @@ FAKE_ANDROID = """
     postMessage: function (s) { push(['postMessage', JSON.parse(s)]); },
     copy: function (t) { push(['copy', t]); },
     paste: function () { push(['paste']); return '假剪贴板里的文字'; },
-    showKeyboard: function () { push(['showKeyboard']); }
+    showKeyboard: function () { push(['showKeyboard']); },
+    saveFile: function (name, text) { push(['saveFile', name, text.length]); }
   };
 })();
 """

@@ -131,6 +131,22 @@ export function shellPaste() {
   return null;
 }
 
+/**
+ * 安卓壳里保存文件（WebView 不支持网页的「下载」）：壳打开系统的「另存为」，用户选位置。
+ * 交给壳了返回 true；不在安卓壳里返回 false（照常用浏览器下载）。
+ */
+export function shellSaveFile(name, text) {
+  if (window.AndroidBridge && typeof window.AndroidBridge.saveFile === 'function') {
+    try {
+      window.AndroidBridge.saveFile(String(name), String(text));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 /** 安卓壳里弹出键盘（网页自己 focus() 不会弹） */
 export function shellKeyboard() {
   if (window.AndroidBridge && typeof window.AndroidBridge.showKeyboard === 'function') {

@@ -109,6 +109,27 @@ function readInitial() {
   return { text: sp.get('text') || '', readonly: sp.get('readonly') !== '0', source: sp.get('text') ? 'select' : 'launcher' };
 }
 
+// 草稿：点齿轮进设置页再回来，这一页会重新加载；用 sessionStorage 记住刚才打的字。
+// 安卓里每次打开 App 是新的网页窗口（sessionStorage 是空的），所以不会把上一次的字带过来。
+// initial 用来确认是「同一次打开」：选中别的文字重新打开时，以新选中的文字为准。
+const DRAFT_KEY = 'lh.sheetDraft';
+function restoreDraft(initial) {
+  try {
+    const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null');
+    if (d && d.initial === initial && typeof d.text === 'string') return d.text;
+  } catch {
+    /* ignore */
+  }
+  return initial;
+}
+function saveDraft(initial) {
+  try {
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ initial, text: el.src.value }));
+  } catch {
+    /* ignore */
+  }
+}
+
 function closeSheet() {
   cancel();
   if (shellKind()) sendToShell({ action: 'close' });
@@ -264,8 +285,9 @@ function run(mode) {
   if (mode === 'translate') {
     // 卡片从上往下排，顺序就是创建顺序：Yandex → Google → DeepSeek（越快的越靠上，
     // DeepSeek 边出字边变高也不会把上面已经出来的结果挤动）
-    if (s.yandex) runMachine('yandex', text, src, tgt, ctrl.signal);
-    if (s.google) runMachine('google', text, src, tgt, ctrl.signal);
+    const machine = [];
+    if (s.yandex) machine.push(runMachine('yandex', text, src, tgt, ctrl.signal));
+    if (s.google) machine.push(runMachine('google', text, src, tgt, ctrl.signal));
     const ds = makeCard('deepseek');
     if ((s.yandex || s.google) && looksLikeTerm(text, src)) {
       // 像一个词：DeepSeek 先收起来，点它才去查询（省钱）
@@ -273,7 +295,7 @@ function run(mode) {
       ds.out.classList.remove('loading');
       ds.out.classList.add('muted');
       ds.out.textContent = '点这里用 DeepSeek 查询';
-      state.lazy = {
+      const lazy = {
         root: ds.root,
         start: () => {
           ds.root.classList.remove('lazy');
@@ -283,7 +305,15 @@ function run(mode) {
           runDeepSeek(ds, text, src, tgt, mode, ctrl.signal);
         },
       };
+      state.lazy = lazy;
       ds.root.addEventListener('click', startLazy);
+      // 机翻都出来了、也没点 DeepSeek：把这个词记进历史（DeepSeek 的结果会另外记）
+      Promise.allSettled(machine).then(() => {
+        if (state.lazy !== lazy) return;
+        store
+          .putLookup({ device: s.device, from: 'android', src, tgt, text, results: state.result })
+          .catch(() => {});
+      });
     } else {
       runDeepSeek(ds, text, src, tgt, mode, ctrl.signal);
     }
@@ -362,7 +392,7 @@ async function runDeepSeek(c, text, src, tgt, mode, signal) {
   if (!s.apiKey.trim()) {
     c.out.classList.remove('loading');
     c.out.classList.add('muted');
-    c.out.textContent = '还没有设置 API key：返回第一页，点右上角齿轮进入设置。';
+    c.out.textContent = '还没有设置 API key：点右上角的齿轮进入设置。';
     return;
   }
 
@@ -457,8 +487,12 @@ function startLazy() {
 function init() {
   const init = readInitial();
   state.readonly = init.readonly !== false;
-  el.src.value = init.text || '';
+  el.src.value = restoreDraft(init.text || '');
   renderChoose();
+  // 进设置 / 历史页之前（以及每次打字）记下草稿，回来时还在
+  const keepDraft = () => saveDraft(init.text || '');
+  el.src.addEventListener('input', keepDraft);
+  window.addEventListener('pagehide', keepDraft);
 
   for (const b of document.querySelectorAll('[data-close]')) b.addEventListener('click', closeSheet);
   $('back').addEventListener('click', () => setResultMode(false));
