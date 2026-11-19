@@ -27,12 +27,17 @@ web/                    网页本体（部署到 GitHub Pages 的就是这个目
   js/popup.js           PC 弹窗的逻辑
   js/yandex.js          Yandex 翻译
   js/history.js         本地历史（IndexedDB）
+  sheet.html            手机弹窗页（安卓 App 里从底部弹出的那张卡片）
+  js/sheet.js           手机弹窗的逻辑
+  js/lang.js            原文语言判断、目标语言候选、「像不像一个词」（PC / 手机共用）
   js/bridge.js          和 PC 弹窗 / 安卓壳通信
   sw.js                 离线缓存
 ahk/lang-helper.ahk     PC 弹窗（AutoHotkey v2）
 ahk/lang-helper.example.ini  PC 弹窗设置模板
+android/                安卓 App（透明窗口 + 网页，选中文字 →「译」）
+  make-keystore.ps1     生成签名密钥（只做一次）
 dev/server.py           本地开发服务器 + 模拟 DeepSeek 接口
-.github/workflows/      自动部署到 GitHub Pages
+.github/workflows/      自动部署到 GitHub Pages、自动打包安卓 APK
 ```
 
 ## 本地运行
@@ -44,6 +49,8 @@ python dev/server.py
 打开 http://localhost:8787 ，在「设置」里填 API key。
 
 不想花钱、只想测界面：设置里把 Base URL 改成 `http://localhost:8787/mock`，API key 随便填 8 个字符以上。原文里写 `#401`、`#402`、`#500`、`#slow` 可以模拟各种错误和超时。开发服务器还有 `/__dev/mock?mode=ja&text=...`：一键把当前地址切到模拟接口并带文字打开（只在本地有）。
+
+手机弹窗：`/__dev/mock?delay=0&next=/sheet.html&readonly=0&text=...`；换成 `next=/sheet-android.html` 会加一个假的安卓壳（`window.AndroidBridge`，调用记录在 `window.__android`），用来测替换、返回键、粘贴。
 
 本地默认**不启用**离线缓存，免得改了代码看不到效果。要测缓存时，在浏览器控制台执行 `localStorage.setItem('lh.sw','1')` 再刷新。
 
@@ -136,7 +143,39 @@ DeepSeek 卡片用的就是主页面那三套提示词：译成日语用「写�
 3. 仓库 **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**。
 4. 等 Actions 跑完，网址是 `https://<你的用户名>.github.io/lang-helper/`。
 
-## 安装到手机
+## 安卓 App（选中文字 →「译」）
+
+在任何 App 里选中文字，弹出的菜单里点 **译**（有的手机要先点「⋮ / 更多」），屏幕下方弹出一张卡片（最高 3/4 屏）：
+
+1. **第一页**：原文（可以改）、目标语言（两个候选都列出来，点一下选）、「翻译」「润色」两个大按钮。
+2. **结果页**：上面原文，下面结果卡片。翻译时卡片可以左右滑：先 Yandex（快），再 DeepSeek；像一个词时 DeepSeek 等你滑过去才查（省钱）。润色只有 DeepSeek 一张，标出改动、给要点。
+3. 每张结果卡片：**复制**（卡片不关）、**替换**（只在能编辑的输入框里出现：把原文换成结果并关闭）。
+4. 返回键：结果页 → 第一页 → 关闭。点上面变暗的地方、或往下拖卡片也会关闭。
+5. 桌面图标打开的是同一张卡片，输入框是空的，直接打字。
+
+App 本身只是一个透明窗口，里面打开 `https://stoney239.github.io/lang-helper/sheet.html`。所以**改网页不用重装 App**，推送后下次打开就是新版；只有改了 `android/` 才需要装新 APK。
+
+### 第一次：准备签名密钥（只做一次）
+
+APK 要用同一把密钥签名，以后才能直接覆盖安装新版（换了密钥就得先卸载，App 里的 API key、历史都会丢）。
+
+1. 生成密钥（已经生成过了，在 `android/keystore/`，不会被提交）：
+   ```bash
+   powershell -ExecutionPolicy Bypass -File android/make-keystore.ps1
+   ```
+2. **把 `android/keystore/` 整个文件夹另外备份一份**（网盘、U 盘都行）。
+3. GitHub 仓库 → **Settings → Secrets and variables → Actions → New repository secret**，加两个：
+   - `ANDROID_KEYSTORE_BASE64`：内容是 `android/keystore/secret-base64.txt` 里的全部文字
+   - `ANDROID_KEYSTORE_PASSWORD`：内容是 `android/keystore/password.txt` 里的文字
+
+### 打包和安装
+
+1. 推送后 GitHub Actions 自动打包（改了 `android/` 才会触发；也可以在 Actions 页面手动点「Build Android APK」→ Run workflow）。
+2. 手机浏览器打开 https://github.com/stoney239/lang-helper/releases/latest/download/lang-helper.apk 下载安装（第一次要允许「安装未知应用」）。
+3. 打开 App → 右上角齿轮 → 填一次 API key（App 里的存储和手机浏览器是分开的）。
+4. 小米 / HyperOS：如果选中文字后菜单里没有「译」，在 设置 → 应用 → lang-helper 里看看有没有被限制；部分系统要在菜单里点「更多」才看得到。
+
+## 手机浏览器版（不装 App 时）
 
 1. 手机 Chrome 打开上面的网址 → 右上角菜单 →「添加到主屏幕」或「安装应用」。
 2. 在设置里填一次 API key。

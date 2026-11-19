@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">lang-helper</string>
+    <!-- 选中文字后弹出的菜单里显示的名字 -->
+    <string name="menu_label">译</string>
+    <string name="offline">没有网络，打不开 lang-helper（第一次打开必须联网）</string>
+</resources>

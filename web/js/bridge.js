@@ -19,11 +19,14 @@ const MODES = ['ja', 'zh', 'en', 'wiki'];
 let page = 'popup';
 
 // 把 ASCII 字符串编码成看不见的零宽字符
+const MARK = String.fromCharCode(0x2063); // 不可见分隔符：暗号从这里开始
+const ZERO = String.fromCharCode(0x200b); // 零宽空格 = 0
+const ONE = String.fromCharCode(0x200c); // 零宽非连接符 = 1
 function invisible(s) {
-  let out = '⁣';
+  let out = MARK;
   for (const ch of s) {
     const code = ch.charCodeAt(0) & 0x7f;
-    for (let i = 6; i >= 0; i--) out += (code >> i) & 1 ? '‌' : '​';
+    for (let i = 6; i >= 0; i--) out += (code >> i) & 1 ? ONE : ZERO;
   }
   return out;
 }
@@ -105,6 +108,42 @@ async function writeClipboard(text) {
     }
     ta.remove();
     return ok;
+  }
+}
+
+/** 安卓壳里用系统剪贴板复制（WebView 里 navigator.clipboard 不一定能用）。成功返回 true */
+export function shellCopy(text) {
+  if (window.AndroidBridge && typeof window.AndroidBridge.copy === 'function') {
+    try {
+      window.AndroidBridge.copy(String(text));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/** 安卓壳里读剪贴板（WebView 不给网页读剪贴板）。不在安卓壳里返回 null */
+export function shellPaste() {
+  if (window.AndroidBridge && typeof window.AndroidBridge.paste === 'function') {
+    try {
+      return String(window.AndroidBridge.paste() || '');
+    } catch {
+      return '';
+    }
+  }
+  return null;
+}
+
+/** 安卓壳里弹出键盘（网页自己 focus() 不会弹） */
+export function shellKeyboard() {
+  if (window.AndroidBridge && typeof window.AndroidBridge.showKeyboard === 'function') {
+    try {
+      window.AndroidBridge.showKeyboard();
+    } catch {
+      /* ignore */
+    }
   }
 }
 

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="sheet_bg">#FF161616</color>
+    <color name="accent">#FF4CC8E2</color>
+    <color name="icon_bg">#FF161616</color>
+</resources>

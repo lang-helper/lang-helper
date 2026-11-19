@@ -24,6 +24,28 @@ from pathlib import Path
 WEB = Path(__file__).resolve().parent.parent / "web"
 DELIM = "@@NOTES@@"
 
+# /sheet-android.html 用的假安卓壳：和 android/.../SheetActivity.java 的 Bridge 一样的接口，
+# 调用记录在 window.__android 里（测试时用 JS 读出来看）
+FAKE_ANDROID = """
+(function () {
+  var sp = new URLSearchParams(location.search);
+  var log = (window.__android = []);
+  window.AndroidBridge = {
+    getInitial: function () {
+      return JSON.stringify({
+        text: sp.get('text') || '',
+        readonly: sp.get('readonly') !== '0',
+        source: sp.get('text') ? 'select' : 'launcher'
+      });
+    },
+    postMessage: function (s) { log.push(['postMessage', JSON.parse(s)]); },
+    copy: function (t) { log.push(['copy', t]); },
+    paste: function () { log.push(['paste']); return '假剪贴板里的文字'; },
+    showKeyboard: function () { log.push(['showKeyboard']); }
+  };
+})();
+"""
+
 
 def extract_original(user: str) -> str:
     m = re.search(r"【原文】\n([\s\S]*)$", user)
@@ -102,7 +124,26 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith("/__dev/mock"):
             self.dev_mock_setup()
             return
+        if self.path.startswith("/__dev/fake-android.js"):
+            self.send_bytes(FAKE_ANDROID.encode("utf-8"), "text/javascript; charset=utf-8")
+            return
+        if self.path.startswith("/sheet-android.html"):
+            # sheet.html + 假的安卓壳（window.AndroidBridge），在电脑浏览器里测安卓那条路
+            html = (WEB / "sheet.html").read_text(encoding="utf-8")
+            html = html.replace(
+                '<script type="module" src="js/sheet.js">',
+                '<script src="__dev/fake-android.js"></script>\n<script type="module" src="js/sheet.js">',
+            )
+            self.send_bytes(html.encode("utf-8"), "text/html; charset=utf-8")
+            return
         super().do_GET()
+
+    def send_bytes(self, data: bytes, ctype: str):
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def dev_mock_setup(self):
         from urllib.parse import parse_qs, urlencode, urlparse
@@ -118,7 +159,7 @@ class Handler(SimpleHTTPRequestHandler):
             "theme": q.get("theme", "dark"),
             "mode": q.get("mode", "ja"),
         }
-        nxt = {k: q[k] for k in ("shell", "text", "pmode", "gap", "run", "ds") if q.get(k)}
+        nxt = {k: q[k] for k in ("shell", "text", "pmode", "gap", "run", "ds", "readonly") if q.get(k)}
         path = q.get("next", "/")
         if not path.startswith("/") or path.startswith("//"):
             path = "/"

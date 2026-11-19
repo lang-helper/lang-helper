@@ -1,9 +1,10 @@
-// Service worker：缓存网页外壳，打开更快、断网也能打开（调用 API 当然还是要联网）。
-// 策略：先用缓存秒开，同时在后台拉新版本，下次打开就是新的（stale-while-revalidate）。
+// Service worker：有网时总是取最新版（network-first），断网或 3 秒没响应时才用缓存。
+// 以前是「先用缓存秒开、后台更新」，结果发布新版后要刷新两次才看得到，自用工具不划算。
 // 改了 SHELL 列表时把 VERSION 加一。
 
-const VERSION = 'v5';
+const VERSION = 'v7';
 const CACHE = 'lh-' + VERSION;
+const TIMEOUT_MS = 3000;
 const SHELL = [
   './',
   './index.html',
@@ -24,6 +25,10 @@ const SHELL = [
   './js/popup.js',
   './popup.html',
   './css/popup.css',
+  './js/lang.js',
+  './js/sheet.js',
+  './sheet.html',
+  './css/sheet.css',
   './manifest.webmanifest',
   './icons/icon.svg',
   './icons/icon-192.png',
@@ -33,7 +38,7 @@ self.addEventListener('install', (e) => {
   e.waitUntil(
     caches
       .open(CACHE)
-      // cache: 'reload'：绕过浏览器的 HTTP 缓存（GitHub Pages 会缓存 10 分钟），确保拿到刚发布的新版
+      // cache: 'reload'：绕过浏览器的 HTTP 缓存，确保拿到刚发布的新版
       .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' }))))
       .then(() => self.skipWaiting()),
   );
@@ -59,26 +64,26 @@ self.addEventListener('fetch', (e) => {
     req.mode === 'navigate' && (url.pathname === scope.pathname || url.pathname === scope.pathname + 'index.html');
 
   if (isAppPage) {
-    // 主页面一律用缓存里的 index.html，并且用"不带参数"的地址去更新：
-    // 这样「分享」进来的文字（在 ?text= 里）不会被发到服务器。
-    e.respondWith(staleWhileRevalidate(e, new Request(new URL('index.html', scope).href)));
+    // 主页面用「不带参数」的地址去取：「分享」进来的文字（在 ?text= 里）不会被发到服务器
+    e.respondWith(networkFirst(new URL('index.html', scope).href));
     return;
   }
-  e.respondWith(staleWhileRevalidate(e, req));
+  // 其他页面（如 popup.html?shell=ahk）也去掉参数取，参数只留给页面自己的脚本读
+  e.respondWith(networkFirst(url.origin + url.pathname));
 });
 
-async function staleWhileRevalidate(event, req) {
+async function networkFirst(href) {
   const cache = await caches.open(CACHE);
-  const cached = await cache.match(req, { ignoreSearch: true });
-  const network = fetch(req)
-    .then((res) => {
-      if (res.ok) cache.put(req, res.clone());
-      return res;
-    })
-    .catch(() => null);
-  if (cached) {
-    event.waitUntil(network);
-    return cached;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    // cache: 'no-cache'：每次都向服务器确认（没变就是很快的 304），保证是最新版
+    const res = await fetch(new Request(href, { cache: 'no-cache', signal: ctrl.signal }));
+    clearTimeout(timer);
+    if (res.ok) cache.put(href, res.clone());
+    return res;
+  } catch {
+    const cached = await cache.match(href, { ignoreSearch: true });
+    return cached || new Response('离线，且没有缓存', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
   }
-  return (await network) || new Response('离线，且没有缓存', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 }

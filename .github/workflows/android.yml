@@ -1,0 +1,86 @@
+# 打包安卓 App（android/）并发布到 Releases。
+# 手机上下载：https://github.com/stoney239/lang-helper/releases/latest/download/lang-helper.apk
+#
+# 签名：在仓库 Settings → Secrets and variables → Actions 里放两个 Secret（README 有步骤）：
+#   ANDROID_KEYSTORE_BASE64   密钥文件（.p12）的 base64
+#   ANDROID_KEYSTORE_PASSWORD 密钥密码
+# 没放的话也能打包，但每次签名都不同，装新版前得先卸载旧版（会丢掉 App 里的设置和历史）。
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Restore signing key
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KS_B64" ]; then
+            echo "::warning::没有设置签名密钥（ANDROID_KEYSTORE_BASE64），这次用临时签名：装新版前要先卸载旧版。"
+            exit 0
+          fi
+          ks="$RUNNER_TEMP/release.p12"
+          printf '%s' "$KS_B64" | base64 -d > "$ks"
+          alias=$(keytool -list -v -keystore "$ks" -storetype PKCS12 -storepass:env KS_PASS | sed -n 's/^Alias name: //p' | head -n 1)
+          if [ -z "$alias" ]; then
+            echo "::error::读不出密钥（密码不对，或 base64 不完整）"
+            exit 1
+          fi
+          {
+            echo "KEYSTORE_FILE=$ks"
+            echo "KEYSTORE_PASSWORD=$KS_PASS"
+            echo "KEY_ALIAS=$alias"
+          } >> "$GITHUB_ENV"
+
+      - name: Build APK
+        working-directory: android
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: 1.0.${{ github.run_number }}
+        run: gradle --no-daemon assembleRelease
+
+      - name: Rename
+        run: cp android/app/build/outputs/apk/release/app-release.apk lang-helper.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lang-helper-apk
+          path: lang-helper.apk
+
+      - name: Publish release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          N: ${{ github.run_number }}
+        run: |
+          signed=$([ -n "$KEYSTORE_FILE" ] && echo "正式签名" || echo "临时签名（装之前先卸载旧版）")
+          gh release create "android-v$N" lang-helper.apk \
+            --title "安卓 App 1.0.$N" \
+            --notes "选中文字 →「译」。$signed。提交：${GITHUB_SHA::7}" \
+            --target "$GITHUB_SHA" \
+            --latest

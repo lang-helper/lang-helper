@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>lang-helper</title>
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/sheet.css">
+<script type="module" src="js/sheet.js"></script>
+<!-- 一次把所有脚本都要过来（手机网络慢时，少几轮「等一个文件→才知道要下一个」） -->
+<link rel="modulepreload" href="js/settings.js">
+<link rel="modulepreload" href="js/prompts.js">
+<link rel="modulepreload" href="js/llm.js">
+<link rel="modulepreload" href="js/output.js">
+<link rel="modulepreload" href="js/detect.js">
+<link rel="modulepreload" href="js/diff.js">
+<link rel="modulepreload" href="js/history.js">
+<link rel="modulepreload" href="js/yandex.js">
+<link rel="modulepreload" href="js/bridge.js">
+<link rel="modulepreload" href="js/lang.js">
+</head>
+<body class="sheet-page">
+<!-- 安卓 App 里：选中文字 →「译」→ 这一页从底部弹出（最高 3/4 屏），上面变暗的部分点一下就关闭 -->
+<div class="backdrop" id="backdrop"></div>
+
+<section class="sheet" id="sheet" aria-label="lang-helper">
+  <div class="grab" id="grab"><span></span></div>
+
+  <!-- ① 选择：翻译还是润色、目标语言 -->
+  <div class="screen" id="screen-choose">
+    <header class="sh-head">
+      <span class="sh-title">lang-helper</span>
+      <span class="spacer"></span>
+      <a class="sh-icon" href="index.html#settings" title="设置" aria-label="设置">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </a>
+      <button type="button" class="sh-icon" data-close title="关闭" aria-label="关闭">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </header>
+
+    <div class="card src-card src-edit">
+      <textarea id="src" spellcheck="false" autocomplete="off" placeholder="输入或粘贴文字"></textarea>
+      <div class="src-foot">
+        <button type="button" class="chip detect" id="detect"><i></i><span>自动</span></button>
+        <span class="spacer"></span>
+        <button type="button" class="sh-icon small" id="paste" title="粘贴" aria-label="粘贴">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9.5 3h5v3h-5z"/></svg>
+        </button>
+        <button type="button" class="sh-icon small" id="clear" title="清空" aria-label="清空">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 5H9l-6 7 6 7h11a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/><path d="M17 9l-6 6M11 9l6 6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="targets" id="targets"></div>
+
+    <div class="tiles">
+      <button type="button" class="tile" data-run="translate">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h8M8 3v2M6 5c0 4 2 7 6 9M10 5c0 3-2 6-6 8"/><path d="M13 21l4-9 4 9M14.5 18h5"/></svg>
+        <span>翻译</span>
+      </button>
+      <button type="button" class="tile" data-run="polish">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/><path d="M19 13v4M17 15h4M6 3v3M4.5 4.5h3"/></svg>
+        <span>润色</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ② 结果：原文 + 结果卡片（翻译时可以左右滑动：Yandex、DeepSeek） -->
+  <div class="screen" id="screen-result" hidden>
+    <header class="sh-head">
+      <button type="button" class="sh-icon" id="back" title="返回" aria-label="返回">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <span class="sh-title center" id="result-title"></span>
+      <button type="button" class="sh-icon" data-close title="关闭" aria-label="关闭">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </header>
+    <div class="card src-card src-view" id="src-view"></div>
+    <div class="results" id="results"></div>
+    <div class="dots" id="dots"></div>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

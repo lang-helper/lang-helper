@@ -651,6 +651,11 @@ function route() {
     location.replace('popup.html');
     return;
   }
+  // 安卓 App 里同理：回到主界面 = 回到手机弹窗
+  if (view === 'main' && shellKind() === 'android') {
+    location.replace('sheet.html');
+    return;
+  }
   for (const id of ['main', 'history', 'settings']) $('view-' + id).hidden = id !== view;
   el.dock.hidden = view !== 'main';
   if (view === 'history') renderHistory(true);
@@ -834,6 +839,15 @@ function init() {
         location.replace('popup.html');
       }
     });
+  }
+  if (shellKind() === 'android') {
+    // 安卓 App 里只用这个页面的「设置」「历史」；返回链接回到手机弹窗。
+    // 返回键：壳会调用 window.lhBack()
+    for (const a of $$('.back')) a.href = 'sheet.html';
+    window.lhBack = () => {
+      location.replace('sheet.html');
+      return 'handled';
+    };
   }
   const s = getSettings();
   applyTheme(s.theme);

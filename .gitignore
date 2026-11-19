@@ -6,3 +6,13 @@ PLAN.md
 ahk/lang-helper.ini
 ahk/selftest.log
 ahk/debug.log
+# 安卓签名密钥：只留在本地（另外备份一份），GitHub 上放在 Secrets 里
+android/keystore/
+*.p12
+*.jks
+*.keystore
+# 安卓构建产物
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
