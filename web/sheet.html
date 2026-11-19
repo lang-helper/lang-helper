@@ -23,12 +23,18 @@
 <link rel="modulepreload" href="js/lang.js">
 </head>
 <body class="sheet-page">
-<!-- 安卓 App 的页面：全屏（小窗打开时也是铺满小窗）。上面标题，中间原文，底部按钮（键盘弹出时贴着键盘） -->
+<!--
+  安卓 App 的页面：全屏（小窗打开时也是铺满小窗），只有一个画面。
+  · 输入时：标题、原文（占满中间）、目标语言、「翻译」「润色」按钮（键盘弹出时贴着键盘）
+  · 执行后（body.has-result）：原文框用动画往上缩小，下面的按钮换成各家的结果卡片（上下滚动）。
+    点原文框 / 返回键 → 原文框展开，按钮回来。
+-->
 <section class="sheet" id="sheet" aria-label="lang-helper">
-  <!-- ① 选择：翻译还是润色、目标语言 -->
-  <div class="screen" id="screen-choose">
     <header class="sh-head">
-      <span class="sh-title">lang-helper</span>
+      <button type="button" class="sh-icon only-result" id="back" title="返回修改" aria-label="返回修改">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <span class="sh-title" id="title">lang-helper</span>
       <span class="spacer"></span>
       <a class="sh-icon" href="index.html#settings" title="设置" aria-label="设置">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
@@ -38,7 +44,7 @@
       </button>
     </header>
 
-    <div class="card src-card src-edit">
+    <div class="card src-card src-edit" id="src-card">
       <textarea id="src" spellcheck="false" autocomplete="off" enterkeyhint="go" placeholder="输入或粘贴文字，回车翻译"></textarea>
       <div class="src-foot">
         <button type="button" class="chip detect" id="detect"><i></i><span>自动</span></button>
@@ -52,9 +58,9 @@
       </div>
     </div>
 
-    <div class="targets" id="targets"></div>
+    <div class="targets only-edit" id="targets"></div>
 
-    <div class="tiles">
+    <div class="tiles only-edit">
       <button type="button" class="tile" data-run="translate">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h8M8 3v2M6 5c0 4 2 7 6 9M10 5c0 3-2 6-6 8"/><path d="M13 21l4-9 4 9M14.5 18h5"/></svg>
         <span>翻译</span>
@@ -64,22 +70,9 @@
         <span>润色</span>
       </button>
     </div>
-  </div>
 
-  <!-- ② 结果：原文固定在上面，下面的结果卡片上下滚动（Yandex、Google、DeepSeek） -->
-  <div class="screen" id="screen-result" hidden>
-    <header class="sh-head">
-      <button type="button" class="sh-icon" id="back" title="返回" aria-label="返回">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
-      </button>
-      <span class="sh-title center" id="result-title"></span>
-      <button type="button" class="sh-icon" data-close title="关闭" aria-label="关闭">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
-      </button>
-    </header>
-    <div class="card src-card src-view" id="src-view"></div>
-    <div class="results" id="results"></div>
-  </div>
+    <!-- 执行后出现：结果卡片（Yandex、Google、DeepSeek），上下滚动 -->
+    <div class="results only-result" id="results"></div>
 </section>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>

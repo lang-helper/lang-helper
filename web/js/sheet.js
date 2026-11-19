@@ -1,8 +1,10 @@
 // 安卓 App 的页面（sheet.html），全屏布局（小窗打开时铺满小窗）。
 // 入口：桌面图标 / 悬浮球（空输入框），或者选中文字后菜单里的「lang-helper」（部分手机的菜单里没有）。
 //
-// ① 选择页：原文（可改，回车 = 翻译）、目标语言（两个候选都显示，点选）、「翻译」「润色」两个大按钮
-// ② 结果页：原文固定在上面，下面的结果卡片从上往下排、上下滚动（Yandex → Google → DeepSeek）；
+// 只有一个画面，两种状态：
+// ① 输入：原文（占满中间，回车 = 翻译）、目标语言（两个候选都显示，点选）、「翻译」「润色」两个大按钮
+// ② 结果（body.has-result）：原文框用动画缩到约 1/3 屏，下面的按钮换成结果卡片，从上往下排、
+//    上下滚动（Yandex → Google → DeepSeek）。点原文框 / ‹ / 返回键 → 回到 ①。
 //    像一个词时 DeepSeek 先收起来，点它才查询。润色只有一张 DeepSeek 卡片（标出改动、给要点）。
 //
 // 和安卓壳的约定（window.AndroidBridge）：
@@ -25,13 +27,12 @@ import { LANG, sourceLang, isAmbiguousHan, targetsFor, looksLikeTerm } from './l
 
 const $ = (id) => document.getElementById(id);
 const el = {
-  choose: $('screen-choose'),
-  result: $('screen-result'),
+  sheet: $('sheet'),
+  title: $('title'),
+  srcCard: $('src-card'),
   src: $('src'),
   detect: $('detect'),
   targets: $('targets'),
-  resultTitle: $('result-title'),
-  srcView: $('src-view'),
   results: $('results'),
   toast: $('toast'),
 };
@@ -47,8 +48,9 @@ const state = {
   srcOverride: null, // 只有汉字时手动指定 'zh' | 'ja'
   lastSrc: 'zh',
   ctrl: null,
-  result: { yandex: '', deepseek: '' },
+  result: { yandex: '', google: '', deepseek: '' },
   lazy: null, // 像一个词时：DeepSeek 等点它才查询
+  title: '', // 执行后标题栏显示的「翻译 · 中文 → 日语」
 };
 
 // ───────────────────────── 小工具 ─────────────────────────
@@ -113,19 +115,60 @@ function closeSheet() {
   else toast('（浏览器里测试：这里会关闭 App）');
 }
 
-// 返回键：结果页 → 选择页；选择页 → 关闭
+// 返回键：有结果时 → 回到输入（原文框展开、按钮回来）；输入时 → 关闭
 window.lhBack = () => {
-  if (!el.result.hidden) showScreen('choose');
+  if (isResult()) setResultMode(false);
   else closeSheet();
   return 'handled';
 };
 
-function showScreen(name) {
-  el.choose.hidden = name !== 'choose';
-  el.result.hidden = name !== 'result';
-  if (name === 'choose') {
+// ───────────────────────── 输入 ⇄ 结果（同一个画面） ─────────────────────────
+
+const isResult = () => document.body.classList.contains('has-result');
+
+// 原文框缩小后的高度：至少约 1/3 屏（不会缩成一两行），内容多时最多约 45%
+function compactHeight() {
+  const H = el.sheet.clientHeight;
+  const ta = el.src;
+  const keep = ta.style.cssText;
+  ta.style.flex = 'none';
+  ta.style.height = '0px';
+  const textH = ta.scrollHeight; // 文字实际需要的高度
+  ta.style.cssText = keep;
+  const foot = el.srcCard.querySelector('.src-foot').offsetHeight;
+  return Math.round(Math.min(Math.max(textH + foot, H * 0.34, 170), H * 0.46));
+}
+
+/** 切换「输入」和「结果」：原文框用动画缩小 / 展开，下面的按钮和结果卡片互换 */
+function setResultMode(on) {
+  if (isResult() === on) {
+    if (on) el.title.textContent = state.title;
+    return;
+  }
+  const card = el.srcCard;
+  const from = card.getBoundingClientRect().height;
+  for (const a of card.getAnimations?.() ?? []) a.cancel(); // 上一次的动画还没完就直接结束它
+  document.body.classList.toggle('has-result', on);
+  el.title.textContent = on ? state.title : 'lang-helper';
+  let to;
+  if (on) {
+    to = compactHeight();
+    card.style.height = `${to}px`;
+  } else {
+    card.style.height = ''; // 回到「占满中间」
+    to = card.getBoundingClientRect().height;
     cancel();
     renderChoose();
+  }
+  if (Math.abs(from - to) > 1 && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    // 动画期间不让它被 flex 撑满，只看 height
+    card.animate(
+      [
+        { height: `${from}px`, flexGrow: 0, flexShrink: 0 },
+        { height: `${to}px`, flexGrow: 0, flexShrink: 0 },
+      ],
+      { duration: 280, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
+    );
   }
 }
 
@@ -156,7 +199,7 @@ function bindEnter() {
   });
 }
 
-// ───────────────────────── ① 选择页 ─────────────────────────
+// ───────────────────────── ① 输入：目标语言 ─────────────────────────
 
 function renderChoose() {
   const text = el.src.value.trim();
@@ -208,17 +251,15 @@ function run(mode) {
   const tgts = targetsFor(src, mode);
   const tgt = tgts[s.popupAlt && tgts.length > 1 ? 1 : 0];
 
-  el.resultTitle.textContent =
+  state.title =
     mode === 'translate'
       ? `翻译 · ${LANG[src]} → ${LANG[tgt]}`
       : src === tgt
         ? `润色 · ${LANG[src]}`
         : `润色 · ${LANG[src]} → ${LANG[tgt]}`;
-  el.srcView.textContent = text;
-  el.srcView.lang = langAttr(src);
   el.results.replaceChildren();
   el.results.scrollTop = 0;
-  showScreen('result');
+  setResultMode(true);
 
   if (mode === 'translate') {
     // 卡片从上往下排，顺序就是创建顺序：Yandex → Google → DeepSeek（越快的越靠上，
@@ -420,8 +461,11 @@ function init() {
   renderChoose();
 
   for (const b of document.querySelectorAll('[data-close]')) b.addEventListener('click', closeSheet);
-  $('back').addEventListener('click', () => showScreen('choose'));
+  $('back').addEventListener('click', () => setResultMode(false));
   for (const b of document.querySelectorAll('[data-run]')) b.addEventListener('click', () => run(b.dataset.run));
+  // 有结果时点原文框 = 要改原文：原文框展开、按钮回来
+  el.src.addEventListener('focus', () => setResultMode(false));
+  el.src.addEventListener('click', () => setResultMode(false));
   el.src.addEventListener('input', () => {
     state.srcOverride = null;
     renderChoose();
@@ -429,16 +473,19 @@ function init() {
   el.detect.addEventListener('click', () => {
     const text = el.src.value.trim();
     if (!isAmbiguousHan(text)) return;
+    setResultMode(false);
     state.srcOverride = srcOf(text) === 'zh' ? 'ja' : 'zh';
     renderChoose();
   });
   $('clear').addEventListener('click', () => {
+    setResultMode(false);
     el.src.value = '';
     state.srcOverride = null;
     renderChoose();
     el.src.focus();
   });
   $('paste').addEventListener('click', async () => {
+    setResultMode(false);
     try {
       const t = shellPaste() ?? (await navigator.clipboard.readText());
       if (t) {
@@ -451,6 +498,10 @@ function init() {
     }
   });
   bindEnter();
+  // 小窗改变大小、键盘收起等：缩小后的原文框高度跟着重算
+  window.addEventListener('resize', () => {
+    if (isResult()) el.srcCard.style.height = `${compactHeight()}px`;
+  });
 
   // 从桌面图标打开（没有选中文字）：直接准备输入（安卓里还要让壳把键盘弹出来）
   if (!el.src.value) {

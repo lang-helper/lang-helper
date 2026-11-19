@@ -42,16 +42,27 @@ svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width:
   inset: 0;
   display: flex;
   flex-direction: column;
+  gap: 12px;
   padding: calc(6px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));
   background: var(--bg);
   overflow: hidden;
 }
 
-.screen { flex: 1; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+/* 一个画面两种状态：输入（按钮）⇄ 结果（body.has-result：原文框缩小，按钮换成结果卡片） */
+body:not(.has-result) .only-result { display: none !important; }
+body.has-result .only-edit { display: none !important; }
+body.has-result .src-edit { flex: none; } /* 高度由 sheet.js 算好写在 style 上，并做缩小动画 */
+body.has-result .results { animation: rise 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
+body:not(.has-result) .only-edit { animation: fade 0.22s ease-out; }
+@keyframes rise { from { opacity: 0; transform: translateY(18px); } }
+@keyframes fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  body.has-result .results, body:not(.has-result) .only-edit { animation: none; }
+}
 
 .sh-head { display: flex; align-items: center; gap: 4px; min-height: 52px; flex: none; }
-.sh-title { font-size: 21px; font-weight: 700; padding-left: 4px; }
-.sh-title.center { flex: 1; min-width: 0; text-align: center; font-size: 19px; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sh-title { min-width: 0; font-size: 21px; font-weight: 700; padding-left: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.has-result .sh-title { font-size: 19px; padding-left: 0; }
 .sh-icon {
   display: inline-grid;
   place-items: center;
@@ -72,7 +83,7 @@ svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width:
 
 /* 卡片 */
 .card { background: var(--surface); border-radius: 20px; }
-/* 选择页：原文占满剩下的高度 */
+/* 原文：输入时占满剩下的高度；有结果时缩到约 1/3 屏（见上面 has-result） */
 .src-edit { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 100px; }
 .src-edit textarea {
   display: block;
@@ -91,19 +102,6 @@ svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width:
 }
 .src-edit textarea::placeholder { color: var(--muted); }
 .src-foot { display: flex; align-items: center; gap: 4px; padding: 0 8px 8px 12px; flex: none; }
-/* 结果页：原文按内容高度，最多约 1/3，剩下的给结果卡片 */
-.src-view {
-  flex: 0 1 auto;
-  min-height: 56px;
-  max-height: 32%;
-  padding: 12px 16px;
-  overflow-y: auto;
-  color: var(--fg);
-  font-size: 19px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
 
 /* 语言小标签 */
 .chip {
@@ -161,10 +159,10 @@ svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width:
 @media (max-height: 640px) {
   .tile { flex-direction: row; height: 64px; gap: 10px; }
   .tile svg { width: 28px; height: 28px; }
-  .screen { gap: 10px; }
+  .sheet { gap: 10px; }
 }
 
-/* 结果卡片：原文下面从上往下排，这一块自己上下滚动（原文固定不动） */
+/* 结果卡片：原文框下面从上往下排，这一块自己上下滚动（原文框固定不动） */
 .results {
   flex: 1 1 auto;
   min-height: 0;
