@@ -150,7 +150,7 @@ Self-test (for development; briefly opens windows and simulates keystrokes): `Au
 Open it from the launcher icon or a floating-ball shortcut. It works full screen and in a small (freeform) window. Text, icons and buttons are sized large so it stays usable in a small window. The layout fills whatever window it gets:
 
 1. **First screen**: the source text fills the space; below it the target language (both candidates shown; tap to choose) and two big buttons, Translate (翻译) and Polish (润色), which sit right above the keyboard when it's open. **Enter = Translate** (Shift+Enter on a hardware keyboard inserts a new line).
-2. **Result screen**: the source on top (up to about 1/3 of the height), result cards filling the rest. When translating, swipe the cards left/right: Yandex → Google → DeepSeek (fastest first); for a single word DeepSeek only runs once you swipe to it (saves money). Polish shows one DeepSeek card with changes highlighted and notes.
+2. **Result screen**: the source stays fixed on top (up to about 1/3 of the height); below it the result cards are stacked vertically and scroll up and down: Yandex → Google → DeepSeek (fastest first). For a single word the DeepSeek card stays folded until you tap it (saves money). Polish shows one DeepSeek card with changes highlighted and notes.
 3. Each result card has large buttons across the bottom: **Copy** (stays open) and **Replace** (only when the text came in from an editable field via the selection menu: puts the result in place of the original and closes).
 4. Back key: result screen → first screen → close.
 

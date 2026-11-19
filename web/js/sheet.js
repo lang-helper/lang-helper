@@ -2,8 +2,8 @@
 // 入口：桌面图标 / 悬浮球（空输入框），或者选中文字后菜单里的「lang-helper」（部分手机的菜单里没有）。
 //
 // ① 选择页：原文（可改，回车 = 翻译）、目标语言（两个候选都显示，点选）、「翻译」「润色」两个大按钮
-// ② 结果页：原文 + 结果卡片。翻译时卡片可以左右滑动（Yandex → Google → DeepSeek）；
-//    像一个词时 DeepSeek 等你滑到它才去查询。润色只有一张 DeepSeek 卡片（标出改动、给要点）。
+// ② 结果页：原文固定在上面，下面的结果卡片从上往下排、上下滚动（Yandex → Google → DeepSeek）；
+//    像一个词时 DeepSeek 先收起来，点它才查询。润色只有一张 DeepSeek 卡片（标出改动、给要点）。
 //
 // 和安卓壳的约定（window.AndroidBridge）：
 //   getInitial() → '{"text": "...", "readonly": true|false, "source": "select"|"launcher"}'
@@ -33,7 +33,6 @@ const el = {
   resultTitle: $('result-title'),
   srcView: $('src-view'),
   results: $('results'),
-  dots: $('dots'),
   toast: $('toast'),
 };
 
@@ -49,7 +48,7 @@ const state = {
   lastSrc: 'zh',
   ctrl: null,
   result: { yandex: '', deepseek: '' },
-  lazy: null, // 像一个词时：DeepSeek 等滑到它（或点它）才查询
+  lazy: null, // 像一个词时：DeepSeek 等点它才查询
 };
 
 // ───────────────────────── 小工具 ─────────────────────────
@@ -218,35 +217,38 @@ function run(mode) {
   el.srcView.textContent = text;
   el.srcView.lang = langAttr(src);
   el.results.replaceChildren();
-  el.results.scrollLeft = 0;
+  el.results.scrollTop = 0;
   showScreen('result');
 
   if (mode === 'translate') {
-    // 卡片顺序就是创建顺序：Yandex → Google → DeepSeek（越快的越靠前）
+    // 卡片从上往下排，顺序就是创建顺序：Yandex → Google → DeepSeek（越快的越靠上，
+    // DeepSeek 边出字边变高也不会把上面已经出来的结果挤动）
     if (s.yandex) runMachine('yandex', text, src, tgt, ctrl.signal);
     if (s.google) runMachine('google', text, src, tgt, ctrl.signal);
     const ds = makeCard('deepseek');
     if ((s.yandex || s.google) && looksLikeTerm(text, src)) {
-      // 像一个词：DeepSeek 等你滑到它的时候才去查询
+      // 像一个词：DeepSeek 先收起来，点它才去查询（省钱）
+      ds.root.classList.add('lazy');
       ds.out.classList.remove('loading');
       ds.out.classList.add('muted');
-      ds.out.textContent = '滑到这里时查询';
+      ds.out.textContent = '点这里用 DeepSeek 查询';
       state.lazy = {
         root: ds.root,
         start: () => {
+          ds.root.classList.remove('lazy');
           ds.out.classList.remove('muted');
+          ds.out.classList.add('loading');
           ds.out.textContent = '';
           runDeepSeek(ds, text, src, tgt, mode, ctrl.signal);
         },
       };
-      ds.root.addEventListener('click', startLazy); // 点一下也行
+      ds.root.addEventListener('click', startLazy);
     } else {
       runDeepSeek(ds, text, src, tgt, mode, ctrl.signal);
     }
   } else {
     runDeepSeek(makeCard('deepseek'), text, src, tgt, mode, ctrl.signal);
   }
-  renderDots();
 }
 
 const SVC = {
@@ -402,24 +404,11 @@ async function runDeepSeek(c, text, src, tgt, mode, signal) {
   }
 }
 
-// 卡片下面的小圆点：第几张
-function renderDots() {
-  const n = el.results.children.length;
-  el.dots.replaceChildren(...Array.from({ length: n > 1 ? n : 0 }, () => make('span')));
-  updateDots();
-}
 function startLazy() {
   if (!state.lazy) return;
   const go = state.lazy.start;
   state.lazy = null;
   go();
-}
-
-function updateDots() {
-  const w = el.results.clientWidth || 1;
-  const i = Math.round(el.results.scrollLeft / w);
-  [...el.dots.children].forEach((d, k) => d.classList.toggle('on', k === i));
-  if (state.lazy && el.results.children[i] === state.lazy.root) startLazy(); // 滑到了 DeepSeek
 }
 
 // ───────────────────────── 初始化 ─────────────────────────
@@ -461,7 +450,6 @@ function init() {
       toast('长按输入框粘贴');
     }
   });
-  el.results.addEventListener('scroll', updateDots, { passive: true });
   bindEnter();
 
   // 从桌面图标打开（没有选中文字）：直接准备输入（安卓里还要让壳把键盘弹出来）
