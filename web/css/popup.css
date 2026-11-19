@@ -1,14 +1,15 @@
-/* PC 弹窗（popup.html）：照 pot 的布局和配色——原文卡片 → 语言条 → 各家结果卡片 */
+/* PC 弹窗（popup.html）：照 pot 的布局和配色——原文卡片 → 各家结果卡片 */
 
-/* pot 风格的中性深灰 + 青色按钮（覆盖 app.css 里的海军蓝主题） */
+/* pot 风格的中性灰 + 青色按钮（覆盖 app.css 里的海军蓝主题）。
+   底色和 Edge 应用窗口暗色模式的标题栏同色（#161616，在你的电脑上实测），这样看起来融为一体。 */
 body.popup {
-  --bg: #1e1e1e;
-  --surface: #2a2a2a;
-  --surface-2: #2a2a2a;
-  --surface-3: #343434;
-  --card-head: #313131;
-  --line: #383838;
-  --line-strong: #4a4a4a;
+  --bg: #161616;
+  --surface: #242424;
+  --surface-2: #242424;
+  --surface-3: #333333;
+  --card-head: #2b2b2b;
+  --line: #303030;
+  --line-strong: #404040;
   --fg: #ececec;
   --fg-out: #f2f2f2;
   --muted: #9b9b9b;
@@ -20,12 +21,13 @@ body.popup {
   --primary-bg: #4cc8e2;
   --primary-fg: #0b2730;
 }
+/* 亮色：Edge 亮色模式的标题栏是白色 */
 :root[data-theme="light"] body.popup {
-  --bg: #f3f3f4;
-  --surface: #ffffff;
-  --surface-2: #ffffff;
-  --surface-3: #ececee;
-  --card-head: #f6f6f7;
+  --bg: #ffffff;
+  --surface: #f4f4f5;
+  --surface-2: #f4f4f5;
+  --surface-3: #e8e8eb;
+  --card-head: #ececef;
   --line: #e2e2e5;
   --line-strong: #cfcfd4;
   --fg: #1d1d1f;

@@ -296,10 +296,9 @@ function replaceWith(t) {
   else toast('还没有结果');
 }
 
+// 还没执行时，结果区留空（不显示提示文字）
 function emptyHint() {
-  el.cards.replaceChildren(
-    make('p', 'pp-empty', state.viewMode === 'translate' ? '按 Enter 翻译' : '按 Enter 润色（DeepSeek）'),
-  );
+  el.cards.replaceChildren();
 }
 
 // ───────────────────────── 执行 ─────────────────────────
@@ -580,7 +579,16 @@ function bind() {
       return;
     }
     if (ev.altKey && !ev.ctrlKey && !ev.metaKey) {
-      const act = { KeyC: copyPrimary, KeyV: () => replaceWith(primaryResult()), KeyR: () => run(), KeyP: togglePin }[ev.code];
+      const act = {
+        KeyC: copyPrimary,
+        KeyV: () => replaceWith(primaryResult()),
+        KeyR: () => run(),
+        KeyP: togglePin,
+        KeyW: () => {
+          cancel();
+          sendToShell({ action: 'close' }); // Alt+W：收起弹窗
+        },
+      }[ev.code];
       if (act) {
         ev.preventDefault();
         act();

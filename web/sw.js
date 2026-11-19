@@ -2,7 +2,7 @@
 // 策略：先用缓存秒开，同时在后台拉新版本，下次打开就是新的（stale-while-revalidate）。
 // 改了 SHELL 列表时把 VERSION 加一。
 
-const VERSION = 'v4';
+const VERSION = 'v5';
 const CACHE = 'lh-' + VERSION;
 const SHELL = [
   './',
@@ -33,7 +33,8 @@ self.addEventListener('install', (e) => {
   e.waitUntil(
     caches
       .open(CACHE)
-      .then((c) => c.addAll(SHELL))
+      // cache: 'reload'：绕过浏览器的 HTTP 缓存（GitHub Pages 会缓存 10 分钟），确保拿到刚发布的新版
+      .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' }))))
       .then(() => self.skipWaiting()),
   );
 });

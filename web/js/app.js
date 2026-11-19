@@ -766,6 +766,9 @@ function bindMain() {
     } else if (ev.code === 'KeyV' && isEmbedded()) {
       ev.preventDefault();
       replaceOriginal();
+    } else if (ev.code === 'KeyW' && isEmbedded()) {
+      ev.preventDefault();
+      sendToShell({ action: 'close' }); // Alt+W：收起弹窗（在弹窗的设置 / 历史页里也能用）
     }
   });
 

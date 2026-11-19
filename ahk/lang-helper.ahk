@@ -11,7 +11,7 @@
 ;
 ; 弹窗就是 Edge 的「应用窗口」（--app，没有地址栏和标签页），用独立的配置目录，不影响你平时的 Edge。
 ; AHK → 网页：粘贴文字后按 Ctrl+Alt+Shift+F9（切到翻译）/ F10（切到润色）/ F11（新开输入）/ F12（回到弹窗页）
-; 网页 → AHK：窗口标题变成「lang-helper-popup|动作|序号」，AHK 每 0.1 秒看一次。
+; 网页 → AHK：窗口标题 =「lang-helper」+ 看不见的零宽字符暗号（解出来是「popup|动作|序号」），AHK 每 0.1 秒看一次。
 ;
 ; 设置在同目录的 lang-helper.ini（第一次运行时从 lang-helper.example.ini 复制）。
 
@@ -19,7 +19,10 @@
 #SingleInstance Force
 Persistent
 
-global POPUP := "lang-helper-popup"
+; 弹窗窗口标题：看得见的「lang-helper」+ 看不见的暗号（U+2063 开头的零宽字符，见 DecodeTitle）
+global TITLE_PREFIX := "lang-helper" Chr(0x2063)
+global PAGE_POPUP := "popup"
+global OLD_TITLE := "lang-helper-popup"   ; 旧版网页直接把暗号写在标题里
 global INI := A_ScriptDir "\lang-helper.ini"
 global START_MS := UnixMs()
 global CFG := ""
@@ -161,22 +164,66 @@ FindPopup() {
     global gPopupHwnd
     if gPopupHwnd && WinExist("ahk_id " gPopupHwnd)
         return gPopupHwnd
-    gPopupHwnd := WinExist(POPUP " ahk_exe msedge.exe")
+    gPopupHwnd := SearchPopup()
     return gPopupHwnd
 }
 
-; 标题「|」前面那一段：lang-helper-popup = 弹窗页，lang-helper-popup-settings = 设置 / 历史页
+; 按标题找弹窗窗口。也认旧版网页的标题「lang-helper-popup…」（网页还没更新到新版时也能用）
+SearchPopup() {
+    if hwnd := WinExist(TITLE_PREFIX " ahk_exe msedge.exe")
+        return hwnd
+    return WinExist(OLD_TITLE " ahk_exe msedge.exe")
+}
+
+WaitPopup(seconds) {
+    t0 := A_TickCount
+    while A_TickCount - t0 < seconds * 1000 {
+        if hwnd := SearchPopup()
+            return hwnd
+        Sleep(100)
+    }
+    return 0
+}
+
+; 暗号「|」前面那一段：popup = 弹窗页，popup-settings = 设置 / 历史页
 PageOf(hwnd) {
-    try return StrSplit(WinGetTitle(hwnd), "|")[1]
+    try return StrSplit(DecodeTitle(WinGetTitle(hwnd)), "|")[1]
     return ""
+}
+
+; 解出标题里看不见的暗号：U+2063 之后，每 7 个零宽字符（U+200B = 0，U+200C = 1）是一个 ASCII 字符
+DecodeTitle(title) {
+    p := InStr(title, Chr(0x2063))
+    if !p {
+        ; 旧版网页：标题直接是「lang-helper-popup|动作|序号」
+        if SubStr(title, 1, StrLen(OLD_TITLE)) = OLD_TITLE
+            return SubStr(title, StrLen("lang-helper-") + 1)
+        return ""
+    }
+    bits := SubStr(title, p + 1)
+    out := ""
+    code := 0, n := 0
+    Loop Parse bits {
+        if A_LoopField = Chr(0x200C)
+            code := code * 2 + 1
+        else if A_LoopField = Chr(0x200B)
+            code := code * 2
+        else
+            continue
+        if ++n = 7 {
+            out .= Chr(code)
+            code := 0, n := 0
+        }
+    }
+    return out
 }
 
 EnsurePopup(hideAfter := false) {
     global gPopupHwnd
     if hwnd := FindPopup()
         return hwnd
-    ; 页面可能正在重新加载（标题暂时不是 lang-helper-popup）：先等一下，免得重复开窗口
-    if hwnd := WinWait(POPUP " ahk_exe msedge.exe", , 1.2) {
+    ; 页面可能正在重新加载（标题里暂时没有暗号）：先等一下，免得重复开窗口
+    if hwnd := WaitPopup(1.2) {
         gPopupHwnd := hwnd
         return hwnd
     }
@@ -189,7 +236,7 @@ EnsurePopup(hideAfter := false) {
         MsgBox("启动 Edge 失败：`n" e.Message, "lang-helper", "Icon!")
         return 0
     }
-    hwnd := WinWait(POPUP " ahk_exe msedge.exe", , 15)
+    hwnd := WaitPopup(15)
     if !hwnd {
         DebugLog("弹窗页面 15 秒内没打开")
         TrayTip("打不开弹窗页面：" CFG.Url "`n本地服务器开着吗？或者改 lang-helper.ini 里的 Url。", "lang-helper", "Iconx")
@@ -225,13 +272,13 @@ ShowPopup(hwnd) {
     if !ok
         return false
     ; 停在设置 / 历史页时，先回到弹窗页
-    if PageOf(hwnd) != POPUP {
+    if PageOf(hwnd) != PAGE_POPUP {
         Send("^!+{F12}")
         t0 := A_TickCount
-        while PageOf(hwnd) != POPUP && A_TickCount - t0 < 4000
+        while PageOf(hwnd) != PAGE_POPUP && A_TickCount - t0 < 4000
             Sleep(100)
         WinActivate(hwnd)
-        if PageOf(hwnd) != POPUP || !WinWaitActive(hwnd, , 1)
+        if PageOf(hwnd) != PAGE_POPUP || !WinWaitActive(hwnd, , 1)
             return false
     }
     Sleep(60)
@@ -360,7 +407,7 @@ WatchPopup() {
     try title := WinGetTitle(hwnd)
     catch
         return
-    parts := StrSplit(title, "|")
+    parts := StrSplit(DecodeTitle(title), "|")
     if parts.Length >= 3 && parts[3] != gLastSeq {
         gLastSeq := parts[3]
         if IsNumber(parts[3]) && Number(parts[3]) >= START_MS   ; 脚本启动前留下的旧信号忽略
