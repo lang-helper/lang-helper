@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+# 计划文档只留在本地
+PLAN.md
+# PC 弹窗的个人设置和自测日志
+ahk/lang-helper.ini
+ahk/selftest.log
+ahk/debug.log

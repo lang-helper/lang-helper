@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<!-- Edge 应用窗口的标题栏用这个颜色：和弹窗背景一样，看起来就融为一体 -->
+<meta name="theme-color" content="#1e1e1e">
+<title>lang-helper</title>
+<script src="js/theme.js"></script>
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/popup.css">
+<script type="module" src="js/popup.js"></script>
+</head>
+<body class="popup">
+<main class="pp-main" id="main">
+  <!-- 原文 -->
+  <section class="pp-box pp-src">
+    <textarea id="src" rows="2" spellcheck="false" autocomplete="off" placeholder="输入或粘贴文字，Enter 执行"></textarea>
+    <!-- 一行：图钉 · 复制 · 清空 · 设置 · ● 原文语言 ……… ● 目标语言 · 翻译/润色 -->
+    <div class="pp-src-foot">
+      <button type="button" class="pp-icon pp-pin" id="pin" aria-pressed="false" title="固定（Alt+P）：点别处不收起，并置顶" aria-label="固定">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3z"/><path d="M12 15v6"/></svg>
+      </button>
+      <button type="button" class="pp-icon" id="copy-src" title="复制原文" aria-label="复制原文">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+      </button>
+      <button type="button" class="pp-icon" id="clear" title="清空" aria-label="清空">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 5H9l-6 7 6 7h11a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/><path d="M17 9l-6 6M11 9l6 6"/></svg>
+      </button>
+      <a href="index.html#settings" class="pp-icon" title="设置" aria-label="设置">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </a>
+      <button type="button" class="pp-chip pp-detect" id="detect" title="识别出的原文语言"><i></i><span>自动</span></button>
+      <span class="spacer"></span>
+      <button type="button" class="pp-chip pp-target" id="target" title="目标语言（Tab 切换）"><i></i><span>日语</span></button>
+      <button type="button" class="pp-run" id="run" title="Enter（Shift+Tab 切换翻译 / 润色）">
+        <svg class="ico-translate" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h8M8 3v2M6 5c0 4 2 7 6 9M10 5c0 3-2 6-6 8"/><path d="M13 21l4-9 4 9M14.5 18h5"/></svg>
+        <svg class="ico-polish" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/></svg>
+        <span id="run-label">翻译</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- 各家结果 -->
+  <section class="pp-cards" id="cards"></section>
+</main>
+
+<footer class="pp-hint" title="Shift+Enter 换行 · Alt+P 固定 · Alt+R 重试">Enter 执行 · Tab 换语言 · Shift+Tab 翻译/润色 · Alt+C 复制 · Alt+V 替换 · Esc 收起</footer>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0b131d">
+<title>lang-helper</title>
+<script src="js/theme.js"></script>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/app.css">
+<script type="module" src="js/app.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#" title="回到主界面"><img src="icons/icon.svg" alt="" width="26" height="26"><span>lang-helper</span></a>
+  <nav class="tabs" role="tablist" aria-label="模式">
+    <button type="button" role="tab" class="mode-btn" data-mode="ja" title="写日语（Alt+1）"><span class="glyph" lang="ja">あ</span>写日语<kbd>Alt+1</kbd></button>
+    <button type="button" role="tab" class="mode-btn" data-mode="zh" title="转中文（Alt+2）"><span class="glyph">中</span>转中文<kbd>Alt+2</kbd></button>
+    <button type="button" role="tab" class="mode-btn" data-mode="en" title="写英文（Alt+3）"><span class="glyph" lang="en">A</span>写英文<kbd>Alt+3</kbd></button>
+    <button type="button" role="tab" class="mode-btn" data-mode="wiki" title="查名词（Alt+4）"><span class="glyph" lang="en">W</span>查名词<kbd>Alt+4</kbd></button>
+  </nav>
+  <div class="top-actions">
+    <a href="#history" class="icon-btn" title="历史" aria-label="历史">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2"/><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3 4v4h4"/></svg>
+    </a>
+    <a href="#settings" class="icon-btn" title="设置" aria-label="设置">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </a>
+  </div>
+</header>
+
+<main>
+  <!-- 主界面：电脑左右两栏，手机上下一张卡片 -->
+  <section id="view-main" class="view">
+    <div class="workspace" id="workspace">
+      <div class="panel panel-in" id="panel-in">
+        <div class="panel-head">
+          <span class="lang-label" id="detect">自动检测</span>
+          <span class="spacer"></span>
+          <div class="seg reg-group not-touch" role="radiogroup" aria-label="文体">
+            <button type="button" role="radio" data-reg="auto" title="跟随原文的です・ます / 普通体，去掉过重的敬语">自动</button>
+            <button type="button" role="radio" data-reg="desu" title="です・ます">礼貌</button>
+            <button type="button" role="radio" data-reg="tame" title="タメ口">随意</button>
+            <button type="button" role="radio" data-reg="formal" title="可以用谦让语、尊敬语">敬语</button>
+          </div>
+        </div>
+        <div class="input-wrap">
+          <textarea id="input" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+          <button type="button" class="icon-btn clear-btn" id="btn-clear" title="清空" aria-label="清空" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div class="panel-foot">
+          <button type="button" class="chip" id="btn-paste" title="粘贴并执行">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9.5 3h5v3h-5z"/></svg>粘贴
+          </button>
+          <span class="hint count" id="count"></span>
+          <span class="spacer"></span>
+          <button type="button" class="btn primary run-btn not-touch" title="执行（Ctrl+Enter）">
+            <span class="run-label">执行</span><kbd>Ctrl+Enter</kbd>
+          </button>
+        </div>
+      </div>
+
+      <div class="panel panel-out" id="panel-out">
+        <div class="panel-head">
+          <span class="lang-label" id="target-label">日语</span>
+          <span class="spacer"></span>
+          <span class="status" id="status"></span>
+        </div>
+        <div class="output" id="output" tabindex="0" data-placeholder="结果会显示在这里"></div>
+        <div class="wiki" id="wiki"></div>
+        <div class="error" id="error" hidden></div>
+        <div class="notes-wrap" id="notes-wrap" hidden>
+          <div class="notes-title">要点</div>
+          <ul class="notes" id="notes"></ul>
+        </div>
+        <div class="panel-foot" id="out-foot" hidden>
+          <button type="button" class="chip" id="btn-diff" aria-pressed="true" title="显示改动" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v8M8 8h8M8 18h8"/></svg>改动
+          </button>
+          <span class="spacer"></span>
+          <button type="button" class="icon-btn" id="btn-retry" title="重试（Alt+R）" aria-label="重试">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/></svg>
+          </button>
+          <button type="button" class="chip" id="btn-replace" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h12l-3-3M20 16H8l3 3"/></svg>替换原文
+          </button>
+          <button type="button" class="chip strong" id="btn-copy" title="复制（Alt+C）">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>复制
+          </button>
+        </div>
+      </div>
+    </div>
+    <p class="shortcuts web-hint not-touch">Ctrl+Enter 执行（查名词时是「AI 猜」） · Esc 取消 · Alt+1/2/3/4 切换模式 · Alt+C 复制结果 · Alt+R 重试</p>
+    <p class="shortcuts popup-hint not-touch">Alt+V 替换原文 · Alt+C 复制 · Esc 收起 · Alt+1/2/3/4 切换模式 · Ctrl+Enter 执行</p>
+  </section>
+
+  <!-- 历史 -->
+  <section id="view-history" class="view" hidden>
+    <div class="view-head"><a href="#" class="back">← 返回</a><h2>历史</h2><span class="hint" id="h-count"></span></div>
+    <div class="bar filters">
+      <select id="h-mode" aria-label="模式">
+        <option value="">全部模式</option>
+        <option value="ja">写日语</option>
+        <option value="zh">转中文</option>
+        <option value="en">写英文</option>
+        <option value="wiki">查名词</option>
+      </select>
+      <input type="search" id="h-search" placeholder="搜索原文、结果、要点" aria-label="搜索">
+      <label class="toggle"><input type="checkbox" id="h-starred">只看收藏</label>
+    </div>
+    <div class="h-list" id="h-list"></div>
+    <div class="bar center"><button type="button" class="btn ghost" id="h-more" hidden>加载更多</button></div>
+    <div class="bar">
+      <button type="button" class="btn" id="h-export">导出 JSON</button>
+      <label class="btn">导入 JSON<input type="file" id="h-import" accept="application/json,.json" hidden></label>
+      <span class="hint">在 P5 做好同步之前，可以用导出/导入在设备之间搬记录。</span>
+    </div>
+  </section>
+
+  <!-- 设置 -->
+  <section id="view-settings" class="view" hidden>
+    <div class="view-head"><a href="#" class="back">← 返回</a><h2>设置</h2></div>
+    <form class="card form" id="settings-form" autocomplete="off">
+      <label for="s-apiKey">API key</label>
+      <div class="row">
+        <input type="password" id="s-apiKey" autocomplete="off" spellcheck="false" placeholder="sk-...">
+        <button type="button" class="btn ghost" id="s-showKey">显示</button>
+      </div>
+      <p class="hint">只保存在这台设备上（浏览器本地存储），不会上传到 GitHub，请求从这台设备直接发往下面的 Base URL。</p>
+
+      <label for="s-baseUrl">Base URL</label>
+      <input id="s-baseUrl" spellcheck="false" placeholder="https://api.deepseek.com">
+
+      <label for="s-model">模型</label>
+      <input id="s-model" spellcheck="false" placeholder="deepseek-flash">
+
+      <label class="toggle"><input type="checkbox" id="s-disableThinking">关闭思考模式（发送 DeepSeek 专用参数 <code>thinking: disabled</code>；换别家服务时取消勾选）</label>
+
+      <label for="s-firstTokenTimeout">首字超时（秒）</label>
+      <input type="number" id="s-firstTokenTimeout" min="3" max="60" step="1">
+
+      <label for="s-device">设备名（历史记录里区分来源）</label>
+      <input id="s-device" spellcheck="false">
+
+      <label class="toggle"><input type="checkbox" id="s-yandex">PC 弹窗翻译时同时显示 Yandex 的结果（非官方接口，免 key；文字会发给 Yandex）</label>
+
+      <label for="s-theme">外观</label>
+      <select id="s-theme">
+        <option value="dark">暗色</option>
+        <option value="light">亮色</option>
+        <option value="system">跟随系统</option>
+      </select>
+
+      <div class="bar">
+        <button type="button" class="btn" id="s-test">测试连接</button>
+        <span class="hint" id="s-test-result"></span>
+      </div>
+    </form>
+    <div class="card form">
+      <div class="bar">
+        <a href="tests.html" class="btn">提示词测试页</a>
+        <span class="spacer"></span>
+        <button type="button" class="btn danger" id="s-wipe">清除本机全部数据</button>
+      </div>
+      <p class="hint">提示词版本 <span id="s-pver"></span></p>
+    </div>
+  </section>
+</main>
+
+<!-- 手机：底部操作栏（模式 + 执行），输入法弹出时贴着键盘上沿 -->
+<div class="dock touch-only" id="dock">
+  <div class="seg dock-seg reg-group" role="radiogroup" aria-label="文体">
+    <button type="button" role="radio" data-reg="auto" title="跟随原文的です・ます / 普通体，去掉过重的敬语">自动</button>
+    <button type="button" role="radio" data-reg="desu" title="です・ます">礼貌</button>
+    <button type="button" role="radio" data-reg="tame" title="タメ口">随意</button>
+    <button type="button" role="radio" data-reg="formal" title="可以用谦让语、尊敬语">敬语</button>
+  </div>
+  <div class="dock-row">
+    <div class="pills" role="tablist" aria-label="模式">
+      <button type="button" role="tab" class="mode-btn" data-mode="ja">写日语</button>
+      <button type="button" role="tab" class="mode-btn" data-mode="zh">转中文</button>
+      <button type="button" role="tab" class="mode-btn" data-mode="en">写英文</button>
+      <button type="button" role="tab" class="mode-btn" data-mode="wiki">查名词</button>
+    </div>
+    <button type="button" class="run-btn dock-run" aria-label="执行">
+      <svg class="ico-send" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      <svg class="ico-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

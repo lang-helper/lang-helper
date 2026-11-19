@@ -1,0 +1,191 @@
+/* PC 弹窗（popup.html）：照 pot 的布局和配色——原文卡片 → 语言条 → 各家结果卡片 */
+
+/* pot 风格的中性深灰 + 青色按钮（覆盖 app.css 里的海军蓝主题） */
+body.popup {
+  --bg: #1e1e1e;
+  --surface: #2a2a2a;
+  --surface-2: #2a2a2a;
+  --surface-3: #343434;
+  --card-head: #313131;
+  --line: #383838;
+  --line-strong: #4a4a4a;
+  --fg: #ececec;
+  --fg-out: #f2f2f2;
+  --muted: #9b9b9b;
+  --accent: #4cc8e2;
+  --run-bg: #4cc8e2;
+  --run-fg: #0b2730;
+  --dot: #a46bff;
+  --dot-target: #f5a524;
+  --primary-bg: #4cc8e2;
+  --primary-fg: #0b2730;
+}
+:root[data-theme="light"] body.popup {
+  --bg: #f3f3f4;
+  --surface: #ffffff;
+  --surface-2: #ffffff;
+  --surface-3: #ececee;
+  --card-head: #f6f6f7;
+  --line: #e2e2e5;
+  --line-strong: #cfcfd4;
+  --fg: #1d1d1f;
+  --fg-out: #111113;
+  --muted: #6e6e73;
+  --accent: #129cbc;
+  --run-bg: #4cc8e2;
+  --run-fg: #0b2730;
+  --dot: #8b4dff;
+  --dot-target: #e08a00;
+  --primary-bg: #129cbc;
+  --primary-fg: #ffffff;
+}
+
+body.popup {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+  font-size: 14px;
+}
+
+/* 图标按钮 */
+.pp-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg);
+  opacity: 0.85;
+  cursor: pointer;
+}
+.pp-icon:hover { background: var(--surface-3); opacity: 1; }
+.pp-icon svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pp-pin[aria-pressed="true"] { color: var(--accent); opacity: 1; }
+.pp-pin[aria-pressed="true"] svg { fill: currentColor; }
+
+/* 主体 */
+.pp-main { flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+.pp-box { background: var(--surface); border-radius: 14px; }
+
+/* 原文 */
+.pp-src:focus-within { box-shadow: 0 0 0 1px var(--line-strong); }
+#src {
+  display: block;
+  width: 100%;
+  min-height: 64px;
+  max-height: 40vh;
+  padding: 14px 16px 6px;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 17px;
+  line-height: 1.6;
+}
+#src:lang(ja) { font-family: "Yu Gothic UI", "Meiryo UI", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; }
+#src::placeholder { color: var(--muted); opacity: 0.8; }
+.pp-src-foot { display: flex; align-items: center; gap: 2px; padding: 2px 10px 10px 8px; }
+.pp-src-foot .pp-icon { width: 30px; height: 30px; }
+
+/* 语言小标签：左边 ● 原文语言（紫点），右边 ● 目标语言（橙点） */
+.pp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pp-chip:hover { border-color: var(--accent); }
+.pp-chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--dot); flex: none; }
+.pp-detect { margin-left: 4px; cursor: default; }
+.pp-detect:hover { border-color: var(--line-strong); }
+.pp-detect.switchable { cursor: pointer; }
+.pp-detect.switchable:hover { border-color: var(--accent); }
+.pp-target { margin-right: 6px; }
+.pp-target i { background: var(--dot-target); }
+
+/* 执行按钮（显示当前模式：翻译 / 润色） */
+.pp-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px; /* 和旁边的图标、语言标签一样高 */
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--run-bg);
+  color: var(--run-fg);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pp-run:hover { filter: brightness(1.06); }
+.pp-run svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.pp-run .ico-polish { display: none; }
+.pp-run.polish .ico-polish { display: block; }
+.pp-run.polish .ico-translate { display: none; }
+.pp-run.busy { background: var(--surface-3); color: var(--fg); }
+
+/* 结果卡片 */
+.pp-cards { display: flex; flex-direction: column; gap: 10px; }
+.pp-empty { padding: 18px 0; text-align: center; color: var(--muted); font-size: 13px; }
+.pp-card { background: var(--surface); border-radius: 14px; overflow: hidden; }
+.pp-card-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 6px 4px 14px;
+  background: var(--card-head);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.pp-svc { display: inline-flex; align-items: center; gap: 10px; color: var(--fg); font-size: 15px; }
+.pp-logo {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.pp-logo.deepseek { background: #4d6bfe; }
+.pp-logo.yandex { background: #fc3f1d; }
+.pp-card-b { padding: 12px 16px 6px; }
+.pp-card.folded .pp-card-b { display: none; }
+.pp-fold svg { transition: transform 0.15s; }
+.pp-card.folded .pp-fold svg { transform: rotate(180deg); }
+.pp-out { min-height: 1.6em; color: var(--fg-out); font-size: 17px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+.pp-out.streaming::after { content: "▍"; color: var(--accent); animation: blink 1s steps(1) infinite; }
+.pp-out.muted { color: var(--muted); font-size: 13px; }
+.pp-notes { list-style: none; margin: 10px 0 0; padding: 8px 0 0; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.6; color: var(--fg); }
+.pp-notes li { padding: 2px 0; }
+.pp-err { margin-top: 6px; color: var(--del-fg); font-size: 13px; }
+.pp-card-f { display: flex; align-items: center; gap: 2px; padding: 4px 8px 8px; }
+.pp-card-f .pp-icon[aria-pressed="true"] { color: var(--accent); opacity: 1; }
+.pp-lazy { padding: 0 0 6px; color: var(--muted); font-size: 13px; }
+
+.pp-hint { padding: 5px 8px 7px; color: var(--muted); font-size: 11px; text-align: center; }
+body.popup .toast { bottom: 36px; }
