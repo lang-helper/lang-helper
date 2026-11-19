@@ -1,5 +1,5 @@
 # 打包安卓 App（android/）并发布到 Releases。
-# 手机上下载：https://github.com/stoney239/lang-helper/releases/latest/download/lang-helper.apk
+# 手机上下载：https://github.com/lang-helper/lang-helper/releases/latest/download/lang-helper.apk
 #
 # 签名：在仓库 Settings → Secrets and variables → Actions 里放两个 Secret（README 有步骤）：
 #   ANDROID_KEYSTORE_BASE64   密钥文件（.p12）的 base64

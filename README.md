@@ -141,10 +141,16 @@ Self-test (for development; briefly opens windows and simulates keystrokes): `Au
 
 ## Deploy to GitHub Pages
 
-1. Create a **public** GitHub repository `lang-helper` (free Pages requires public; there are no secrets in the code).
-2. Push this directory (`main` branch).
-3. Repository **Settings → Pages → Build and deployment → Source**: choose **GitHub Actions**.
-4. When the Actions run finishes, the site is at `https://<your-username>.github.io/lang-helper/`.
+The repository lives in its own GitHub organization, **lang-helper**, so the site is at **https://lang-helper.github.io/lang-helper/**.
+
+Why an organization: browser storage (where the API key and history live) is per domain. Under a personal `<user>.github.io` domain, every other Pages site of that user shares the same storage and could read the key. The organization's domain hosts only this tool.
+
+1. The repository must be **public** (free Pages requires it; there are no secrets in the code).
+2. Push to `main`.
+3. Repository **Settings → Pages → Build and deployment → Source**: **GitHub Actions**.
+4. When the Actions run finishes, the site is updated.
+
+If the address ever changes: update `SHEET_URL` in `android/app/build.gradle.kts` (needs a new APK), `Url` in `ahk/lang-helper.ini`, and the links in this README. Storage on the new domain starts empty: export history first, then re-enter the API key and import.
 
 ## Android app
 
@@ -161,7 +167,7 @@ There is a single screen with two states:
 
 The app also registers a **lang-helper** entry in the text-selection menu (PROCESS_TEXT), but some phones (e.g. HyperOS) don't show third-party entries there.
 
-The app itself is just a window with a WebView that opens `https://stoney239.github.io/lang-helper/sheet.html`. **Web changes don't need a reinstall**: after a push, the next time you open it you get the new version. A new APK is only needed when something under `android/` changes.
+The app itself is just a window with a WebView that opens `https://lang-helper.github.io/lang-helper/sheet.html`. **Web changes don't need a reinstall**: after a push, the next time you open it you get the new version. A new APK is only needed when something under `android/` changes.
 
 ### One-time setup: signing key
 
@@ -179,7 +185,7 @@ Every APK must be signed with the same key so new versions install over the old 
 ### Build and install
 
 1. GitHub Actions builds the APK after a push (only when `android/` changes; you can also run "Build Android APK" manually from the Actions page → Run workflow).
-2. On the phone, open https://github.com/stoney239/lang-helper/releases/latest/download/lang-helper.apk and install it (allow "Install unknown apps" the first time).
+2. On the phone, open https://github.com/lang-helper/lang-helper/releases/latest/download/lang-helper.apk and install it (allow "Install unknown apps" the first time).
 3. Open the app → gear icon (top right) → enter the API key once (the app's storage is separate from the phone's browser).
 4. Xiaomi / HyperOS: if the launcher keeps showing an old icon after an update, restart the phone (the system caches app icons).
 

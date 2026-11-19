@@ -17,7 +17,8 @@ android {
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("VERSION_NAME") ?: "0.1-dev"
         // 网页地址（只允许在这个网站里跳转，其他链接用浏览器打开）
-        buildConfigField("String", "SHEET_URL", "\"https://stoney239.github.io/lang-helper/sheet.html\"")
+        // 放在单独的 GitHub 组织 lang-helper 下：这个域名下只有本工具，别的网站读不到 API key
+        buildConfigField("String", "SHEET_URL", "\"https://lang-helper.github.io/lang-helper/sheet.html\"")
     }
 
     buildFeatures {
