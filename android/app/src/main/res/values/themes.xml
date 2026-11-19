@@ -1,28 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-      透明窗口：底下的 App 照常显示，窗口自己把背景调暗（点「译」的瞬间就有反应）。
-      弹出的卡片由网页自己画、自己做动画。
+      普通的全屏窗口（悬浮球 / 小窗打开也正常），底色和网页一样，加载时不闪白。
     -->
     <style name="Theme.Sheet" parent="@android:style/Theme.Material.NoActionBar">
-        <item name="android:windowIsTranslucent">true</item>
-        <item name="android:windowBackground">@android:color/transparent</item>
-        <item name="android:windowNoTitle">true</item>
-        <item name="android:windowContentOverlay">@null</item>
-        <item name="android:backgroundDimEnabled">true</item>
-        <item name="android:backgroundDimAmount">0.5</item>
-        <item name="android:windowAnimationStyle">@style/SheetAnimation</item>
-        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <!-- 和卡片同色，看起来卡片一直延伸到屏幕底边 -->
+        <item name="android:windowBackground">@color/sheet_bg</item>
+        <item name="android:statusBarColor">@color/sheet_bg</item>
         <item name="android:navigationBarColor">@color/sheet_bg</item>
         <item name="android:colorAccent">@color/accent</item>
-    </style>
-
-    <style name="SheetAnimation" parent="@android:style/Animation.Activity">
-        <item name="android:activityOpenEnterAnimation">@anim/fade_in</item>
-        <item name="android:activityCloseExitAnimation">@anim/fade_out</item>
-        <item name="android:taskOpenEnterAnimation">@anim/fade_in</item>
-        <item name="android:taskCloseExitAnimation">@anim/fade_out</item>
     </style>
 </resources>

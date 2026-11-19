@@ -22,12 +22,8 @@
 <link rel="modulepreload" href="js/lang.js">
 </head>
 <body class="sheet-page">
-<!-- 安卓 App 里：选中文字 → 菜单「lang-helper」→ 这一页从底部弹出（最高 3/4 屏），上面变暗的部分点一下就关闭 -->
-<div class="backdrop" id="backdrop"></div>
-
+<!-- 安卓 App 的页面：全屏（小窗打开时也是铺满小窗）。上面标题，中间原文，底部按钮（键盘弹出时贴着键盘） -->
 <section class="sheet" id="sheet" aria-label="lang-helper">
-  <div class="grab" id="grab"><span></span></div>
-
   <!-- ① 选择：翻译还是润色、目标语言 -->
   <div class="screen" id="screen-choose">
     <header class="sh-head">
@@ -42,7 +38,7 @@
     </header>
 
     <div class="card src-card src-edit">
-      <textarea id="src" spellcheck="false" autocomplete="off" placeholder="输入或粘贴文字"></textarea>
+      <textarea id="src" spellcheck="false" autocomplete="off" enterkeyhint="go" placeholder="输入或粘贴文字，回车翻译"></textarea>
       <div class="src-foot">
         <button type="button" class="chip detect" id="detect"><i></i><span>自动</span></button>
         <span class="spacer"></span>

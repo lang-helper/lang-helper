@@ -13,15 +13,15 @@
         android:theme="@style/Theme.Sheet">
 
         <!--
-          同一个透明窗口，两个入口：
-          1) 桌面图标（空的输入框）
-          2) 任何 App 里选中文字 → 菜单里的「lang-helper」（PROCESS_TEXT）。能改的输入框里还会显示「替换」。
+          一个全屏窗口（小窗里也能用，改变小窗大小时不会重新加载），两个入口：
+          1) 桌面图标 / 悬浮球（空的输入框）
+          2) 选中文字 → 菜单里的「lang-helper」（PROCESS_TEXT；部分手机的菜单里不显示）。能改的输入框里还会显示「替换」。
         -->
         <activity
             android:name=".SheetActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale"
-            android:excludeFromRecents="true"
             android:exported="true"
+            android:resizeableActivity="true"
             android:windowSoftInputMode="adjustResize|stateHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -27,14 +27,14 @@ web/                    The web app (this directory is what gets deployed to Git
   js/popup.js           PC popup logic
   js/yandex.js          Yandex Translate
   js/history.js         Local history (IndexedDB)
-  sheet.html            Mobile bottom sheet (what the Android app shows)
-  js/sheet.js           Mobile bottom sheet logic
+  sheet.html            Mobile page (what the Android app shows; full-screen layout)
+  js/sheet.js           Mobile page logic
   js/lang.js            Source-language detection, target candidates, "is this a single word" (shared by PC and mobile)
   js/bridge.js          Messaging with the PC popup / Android shell
   sw.js                 Offline cache (network-first)
 ahk/lang-helper.ahk     PC popup (AutoHotkey v2)
 ahk/lang-helper.example.ini  PC popup settings template
-android/                Android app (transparent window + WebView; select text → "lang-helper")
+android/                Android app (full-screen window + WebView)
   make-keystore.ps1     Creates the signing key (run once)
 dev/server.py           Local dev server + mock DeepSeek API
 .github/workflows/      Deploy to GitHub Pages, build the Android APK
@@ -50,7 +50,7 @@ Open http://localhost:8787 and enter your API key in Settings.
 
 To test the UI without spending money: set Base URL to `http://localhost:8787/mock` in Settings and use any API key of 8+ characters. Put `#401`, `#402`, `#500` or `#slow` in the input to simulate errors and timeouts. The dev server also has `/__dev/mock?mode=ja&text=...`, which switches the current origin to the mock API and opens the app with that text (local only).
 
-Mobile sheet: `/__dev/mock?delay=0&next=/sheet.html&readonly=0&text=...`. Add `&android=1` and every page you open afterwards gets a fake Android shell (`window.AndroidBridge`, calls are logged in `window.__android`) for testing replace, the back key, paste and the settings gear. Visit `/__dev/mock` again without `android=1` to turn it off.
+Mobile page: `/__dev/mock?delay=0&next=/sheet.html&readonly=0&text=...` (add `&run=translate` or `&run=polish` to run immediately). Add `&android=1` and every page you open afterwards gets a fake Android shell (`window.AndroidBridge`, calls are logged in `window.__android`) for testing replace, the back key, paste and the settings gear. Visit `/__dev/mock` again without `android=1` to turn it off.
 
 The service worker is **off** on localhost by default so code changes show up immediately. To test caching, run `localStorage.setItem('lh.sw','1')` in the console and reload.
 
@@ -144,17 +144,18 @@ Self-test (for development; briefly opens windows and simulates keystrokes): `Au
 3. Repository **Settings → Pages → Build and deployment → Source**: choose **GitHub Actions**.
 4. When the Actions run finishes, the site is at `https://<your-username>.github.io/lang-helper/`.
 
-## Android app (select text → "lang-helper")
+## Android app
 
-Select text in any app and tap **lang-helper** in the selection menu (on some phones it's under "⋮ / More"). A card slides up from the bottom (at most 3/4 of the screen):
+Open it from the launcher icon or a floating-ball shortcut. It works full screen and in a small (freeform) window. Text, icons and buttons are sized large so it stays usable in a small window. The layout fills whatever window it gets:
 
-1. **First screen**: the source text (editable), the target language (both candidates shown; tap to choose), and two big buttons: Translate (翻译) and Polish (润色).
-2. **Result screen**: the source on top, result cards below. When translating, swipe the cards left/right: Yandex first (fast), then DeepSeek; for a single word DeepSeek only runs once you swipe to it (saves money). Polish shows one DeepSeek card with changes highlighted and notes.
-3. Each result card: **Copy** (the card stays open) and **Replace** (only shown when the text came from an editable field: puts the result in place of the original and closes).
-4. Back key: result screen → first screen → close. Tapping the dimmed area above or dragging the card down also closes it.
-5. The launcher icon opens the same card with an empty input, ready to type.
+1. **First screen**: the source text fills the space; below it the target language (both candidates shown; tap to choose) and two big buttons, Translate (翻译) and Polish (润色), which sit right above the keyboard when it's open. **Enter = Translate** (Shift+Enter on a hardware keyboard inserts a new line).
+2. **Result screen**: the source on top (up to about 1/3 of the height), result cards filling the rest. When translating, swipe the cards left/right: Yandex first (fast), then DeepSeek; for a single word DeepSeek only runs once you swipe to it (saves money). Polish shows one DeepSeek card with changes highlighted and notes.
+3. Each result card has large buttons across the bottom: **Copy** (stays open) and **Replace** (only when the text came in from an editable field via the selection menu: puts the result in place of the original and closes).
+4. Back key: result screen → first screen → close.
 
-The app itself is just a transparent window that opens `https://stoney239.github.io/lang-helper/sheet.html`. **Web changes don't need a reinstall**: after a push, the next time you open it you get the new version. A new APK is only needed when something under `android/` changes.
+The app also registers a **lang-helper** entry in the text-selection menu (PROCESS_TEXT), but some phones (e.g. HyperOS) don't show third-party entries there.
+
+The app itself is just a window with a WebView that opens `https://stoney239.github.io/lang-helper/sheet.html`. **Web changes don't need a reinstall**: after a push, the next time you open it you get the new version. A new APK is only needed when something under `android/` changes.
 
 ### One-time setup: signing key
 
@@ -174,7 +175,7 @@ Every APK must be signed with the same key so new versions install over the old 
 1. GitHub Actions builds the APK after a push (only when `android/` changes; you can also run "Build Android APK" manually from the Actions page → Run workflow).
 2. On the phone, open https://github.com/stoney239/lang-helper/releases/latest/download/lang-helper.apk and install it (allow "Install unknown apps" the first time).
 3. Open the app → gear icon (top right) → enter the API key once (the app's storage is separate from the phone's browser).
-4. Xiaomi / HyperOS: if "lang-helper" doesn't appear in the selection menu, check Settings → Apps → lang-helper for restrictions; on some systems it's under "More" in the menu.
+4. Xiaomi / HyperOS: if the launcher keeps showing an old icon after an update, restart the phone (the system caches app icons).
 
 ## Mobile browser version (without the app)
 

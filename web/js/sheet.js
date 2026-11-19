@@ -1,6 +1,7 @@
-// 手机弹窗（sheet.html）：安卓 App 里选中文字 → 菜单「lang-helper」→ 从底部弹出。
+// 安卓 App 的页面（sheet.html），全屏布局（小窗打开时铺满小窗）。
+// 入口：桌面图标 / 悬浮球（空输入框），或者选中文字后菜单里的「lang-helper」（部分手机的菜单里没有）。
 //
-// ① 选择页：原文（可改）、目标语言（两个候选都显示，点选）、「翻译」「润色」两个大按钮
+// ① 选择页：原文（可改，回车 = 翻译）、目标语言（两个候选都显示，点选）、「翻译」「润色」两个大按钮
 // ② 结果页：原文 + 结果卡片。翻译时卡片可以左右滑动（Yandex 在前，DeepSeek 在后）；
 //    像一个词时 DeepSeek 等你滑到它才去查询。润色只有一张 DeepSeek 卡片（标出改动、给要点）。
 //
@@ -9,7 +10,6 @@
 //   postMessage('{"action":"close"}' | '{"action":"replace","text":"..."}')
 //   copy(text) / paste() → 剪贴板文字 / showKeyboard()
 //   返回键：壳调用 window.lhBack()
-//   变暗的背景由壳（窗口自带的变暗效果）负责，点一下就有反应；网页里的 .backdrop 在安卓里是透明的
 
 import { getSettings, saveSettings } from './settings.js';
 import { MODES, PROMPT_VERSION, buildMessages } from './prompts.js';
@@ -24,9 +24,6 @@ import { LANG, sourceLang, isAmbiguousHan, targetsFor, looksLikeTerm } from './l
 
 const $ = (id) => document.getElementById(id);
 const el = {
-  sheet: $('sheet'),
-  backdrop: $('backdrop'),
-  grab: $('grab'),
   choose: $('screen-choose'),
   result: $('screen-result'),
   src: $('src'),
@@ -110,16 +107,10 @@ function readInitial() {
   return { text: sp.get('text') || '', readonly: sp.get('readonly') !== '0', source: sp.get('text') ? 'select' : 'launcher' };
 }
 
-let closing = false;
 function closeSheet() {
-  if (closing) return;
-  closing = true;
   cancel();
-  document.body.classList.remove('open');
-  setTimeout(() => {
-    if (shellKind()) sendToShell({ action: 'close' });
-    else closing = false; // 浏览器里测试时没有壳，就停在这里
-  }, 200);
+  if (shellKind()) sendToShell({ action: 'close' });
+  else toast('（浏览器里测试：这里会关闭 App）');
 }
 
 // 返回键：结果页 → 选择页；选择页 → 关闭
@@ -138,34 +129,31 @@ function showScreen(name) {
   }
 }
 
-// 往下拖动把手 / 标题栏关闭
-function bindDrag() {
-  let y0 = null;
-  let dy = 0;
-  const start = (ev) => {
-    if (ev.target.closest('button, a, textarea')) return;
-    y0 = ev.clientY;
-    dy = 0;
-    el.sheet.classList.add('dragging');
-  };
-  const move = (ev) => {
-    if (y0 == null) return;
-    dy = Math.max(0, ev.clientY - y0);
-    el.sheet.style.transform = `translateY(${dy}px)`;
-  };
-  const end = () => {
-    if (y0 == null) return;
-    y0 = null;
-    el.sheet.classList.remove('dragging');
-    el.sheet.style.transform = '';
-    if (dy > 90) closeSheet();
-  };
-  for (const zone of [el.grab, ...document.querySelectorAll('.sh-head')]) {
-    zone.addEventListener('pointerdown', start);
-  }
-  window.addEventListener('pointermove', move);
-  window.addEventListener('pointerup', end);
-  window.addEventListener('pointercancel', end);
+// 回车 = 翻译（Shift+Enter 换行，给外接键盘用）。
+// 手机输入法的回车有的会发 keydown(Enter)，有的只发 beforeinput(insertLineBreak)，两种都接住；
+// 拼音输入中按回车是「上屏字母」，不算。
+function bindEnter() {
+  let allowBreak = false;
+  el.src.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter') return;
+    if (ev.shiftKey) {
+      allowBreak = true;
+      return;
+    }
+    if (ev.isComposing || ev.keyCode === 229) return;
+    ev.preventDefault();
+    run('translate');
+  });
+  el.src.addEventListener('beforeinput', (ev) => {
+    if (ev.inputType !== 'insertLineBreak' && ev.inputType !== 'insertParagraph') return;
+    if (allowBreak) {
+      allowBreak = false;
+      return;
+    }
+    if (ev.isComposing) return;
+    ev.preventDefault();
+    run('translate');
+  });
 }
 
 // ───────────────────────── ① 选择页 ─────────────────────────
@@ -431,12 +419,9 @@ function updateDots() {
 function init() {
   const init = readInitial();
   state.readonly = init.readonly !== false;
-  if (shellKind() === 'android') document.body.classList.add('in-android');
   el.src.value = init.text || '';
-  // 弹窗的高度自适应内容，最多 3/4 屏
   renderChoose();
 
-  el.backdrop.addEventListener('click', closeSheet);
   for (const b of document.querySelectorAll('[data-close]')) b.addEventListener('click', closeSheet);
   $('back').addEventListener('click', () => showScreen('choose'));
   for (const b of document.querySelectorAll('[data-run]')) b.addEventListener('click', () => run(b.dataset.run));
@@ -469,9 +454,8 @@ function init() {
     }
   });
   el.results.addEventListener('scroll', updateDots, { passive: true });
-  bindDrag();
+  bindEnter();
 
-  requestAnimationFrame(() => document.body.classList.add('open'));
   // 从桌面图标打开（没有选中文字）：直接准备输入（安卓里还要让壳把键盘弹出来）
   if (!el.src.value) {
     setTimeout(() => {

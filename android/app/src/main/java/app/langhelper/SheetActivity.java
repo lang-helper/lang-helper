@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
-import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.inputmethod.InputMethodManager;
@@ -21,7 +20,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * 透明窗口 + WebView，打开 GitHub Pages 上的 sheet.html（从底部弹出的卡片由网页自己画）。
+ * 全屏窗口 + WebView，打开 GitHub Pages 上的 sheet.html（界面全部由网页画）。
  *
  * 和网页的约定（window.AndroidBridge，见 web/js/sheet.js 开头）：
  *   getInitial()  → {"text": 选中的文字, "readonly": 能不能替换回去, "source": "select" | "launcher"}
@@ -49,7 +48,7 @@ public class SheetActivity extends Activity {
         initial = buildInitial(getIntent());
 
         web = new WebView(this);
-        web.setBackgroundColor(Color.TRANSPARENT);
+        web.setBackgroundColor(getColor(R.color.sheet_bg)); // 加载完之前也是深灰，不闪白
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true); // localStorage（设置、API key）
