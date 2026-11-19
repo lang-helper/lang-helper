@@ -2,7 +2,7 @@
 // 以前是「先用缓存秒开、后台更新」，结果发布新版后要刷新两次才看得到，自用工具不划算。
 // 改了 SHELL 列表时把 VERSION 加一。
 
-const VERSION = 'v7';
+const VERSION = 'v8';
 const CACHE = 'lh-' + VERSION;
 const TIMEOUT_MS = 3000;
 const SHELL = [
@@ -22,6 +22,7 @@ const SHELL = [
   './js/wiki.js',
   './js/wiki-ui.js',
   './js/yandex.js',
+  './js/google.js',
   './js/popup.js',
   './popup.html',
   './css/popup.css',

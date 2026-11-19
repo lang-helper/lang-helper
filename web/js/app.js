@@ -586,6 +586,7 @@ function loadSettingsForm() {
   for (const k of FIELDS) $('s-' + k).value = s[k];
   $('s-disableThinking').checked = s.disableThinking;
   $('s-yandex').checked = s.yandex;
+  $('s-google').checked = s.google;
   $('s-theme').value = s.theme;
   $('s-pver').textContent = PROMPT_VERSION;
 }
@@ -609,6 +610,10 @@ function bindSettings() {
   });
   $('s-yandex').addEventListener('change', (ev) => {
     saveSettings({ yandex: ev.target.checked });
+    toast('已保存');
+  });
+  $('s-google').addEventListener('change', (ev) => {
+    saveSettings({ google: ev.target.checked });
     toast('已保存');
   });
   $('s-theme').addEventListener('change', (ev) => {

@@ -22,6 +22,7 @@ const DEFAULTS = {
   theme: 'dark',
   // PC 弹窗
   yandex: true, // 翻译时同时显示 Yandex 的结果
+  google: true, // 翻译时同时显示 Google 的结果
   popupMode: 'translate', // 'translate' | 'polish'，Tab 切换，Alt+Q 打开时沿用
   popupAlt: false, // true = 用备选目标语言，Alt+S 切换
   popupCollapsed: {}, // 各结果卡片是否折叠 { yandex: true, ... }

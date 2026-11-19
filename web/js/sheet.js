@@ -2,7 +2,7 @@
 // 入口：桌面图标 / 悬浮球（空输入框），或者选中文字后菜单里的「lang-helper」（部分手机的菜单里没有）。
 //
 // ① 选择页：原文（可改，回车 = 翻译）、目标语言（两个候选都显示，点选）、「翻译」「润色」两个大按钮
-// ② 结果页：原文 + 结果卡片。翻译时卡片可以左右滑动（Yandex 在前，DeepSeek 在后）；
+// ② 结果页：原文 + 结果卡片。翻译时卡片可以左右滑动（Yandex → Google → DeepSeek）；
 //    像一个词时 DeepSeek 等你滑到它才去查询。润色只有一张 DeepSeek 卡片（标出改动、给要点）。
 //
 // 和安卓壳的约定（window.AndroidBridge）：
@@ -19,6 +19,7 @@ import { detectKind } from './detect.js';
 import { diff, renderDiff } from './diff.js';
 import * as store from './history.js';
 import { yandexTranslate } from './yandex.js';
+import { googleTranslate } from './google.js';
 import { sendToShell, shellCopy, shellPaste, shellKeyboard, shellKind } from './bridge.js';
 import { LANG, sourceLang, isAmbiguousHan, targetsFor, looksLikeTerm } from './lang.js';
 
@@ -200,7 +201,7 @@ function run(mode) {
   cancel();
   const ctrl = new AbortController();
   state.ctrl = ctrl;
-  state.result = { yandex: '', deepseek: '' };
+  state.result = { yandex: '', google: '', deepseek: '' };
 
   const s = getSettings();
   const src = srcOf(text);
@@ -221,9 +222,11 @@ function run(mode) {
   showScreen('result');
 
   if (mode === 'translate') {
-    if (s.yandex) runYandex(text, src, tgt, ctrl.signal);
+    // 卡片顺序就是创建顺序：Yandex → Google → DeepSeek（越快的越靠前）
+    if (s.yandex) runMachine('yandex', text, src, tgt, ctrl.signal);
+    if (s.google) runMachine('google', text, src, tgt, ctrl.signal);
     const ds = makeCard('deepseek');
-    if (s.yandex && looksLikeTerm(text, src)) {
+    if ((s.yandex || s.google) && looksLikeTerm(text, src)) {
       // 像一个词：DeepSeek 等你滑到它的时候才去查询
       ds.out.classList.remove('loading');
       ds.out.classList.add('muted');
@@ -246,12 +249,18 @@ function run(mode) {
   renderDots();
 }
 
+const SVC = {
+  yandex: { name: 'Yandex', logo: 'Y', translate: yandexTranslate },
+  google: { name: 'Google', logo: 'G', translate: googleTranslate },
+  deepseek: { name: 'DeepSeek', logo: 'D' },
+};
+
 function makeCard(svc) {
   const root = make('article', 'res-card');
   root.dataset.svc = svc;
   const head = make('div', 'res-head');
   const name = make('span', 'res-name');
-  name.append(make('span', `logo ${svc}`, svc === 'yandex' ? 'Y' : 'D'), svc === 'yandex' ? 'Yandex' : 'DeepSeek');
+  name.append(make('span', `logo ${svc}`, SVC[svc].logo), SVC[svc].name);
   const time = make('span');
   head.append(name, make('span', 'spacer'), time);
   const body = make('div', 'res-body');
@@ -281,18 +290,17 @@ function addActions(c, svc, extra = []) {
   c.foot.hidden = false;
 }
 
-async function runYandex(text, src, tgt, signal) {
-  const c = makeCard('yandex');
-  el.results.prepend(c.root); // Yandex 排第一
-  renderDots();
+// 免 key 的机器翻译（Yandex、Google）：一次出整段结果
+async function runMachine(svc, text, src, tgt, signal) {
+  const c = makeCard(svc);
   const t0 = performance.now();
   try {
-    const r = await yandexTranslate(text, src, tgt, { signal });
-    state.result.yandex = r;
+    const r = await SVC[svc].translate(text, src, tgt, { signal });
+    state.result[svc] = r;
     c.out.textContent = r;
     c.out.lang = langAttr(tgt);
     c.time.textContent = `${((performance.now() - t0) / 1000).toFixed(1)} 秒`;
-    addActions(c, 'yandex');
+    addActions(c, svc);
   } catch (e) {
     c.out.classList.add('muted');
     c.out.textContent = e.message;

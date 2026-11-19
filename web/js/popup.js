@@ -3,7 +3,7 @@
 // 语言：候选顺序 日语 > 中文 > 英语。目标 = 排在最前面、且不是原文语言的那个；Tab 换成剩下那个（会记住）。
 //   中文 → 日语（Tab：英语）  日语 → 中文（Tab：英语）  英语 → 日语（Tab：中文）
 // 模式：Shift+Tab 翻译 ⇄ 润色（会记住，Alt+Q 打开时沿用）。
-// 翻译时自动分流：像一个词 → 只出 Yandex，DeepSeek 折叠着（点开或 Ctrl+Enter 才问）；句子 → 两个一起出。
+// 翻译时自动分流：像一个词 → 只出 Yandex + Google，DeepSeek 折叠着（点开或 Ctrl+Enter 才问）；句子 → 全部一起出。
 // 润色：只用 DeepSeek，标出改动、给要点。
 //
 // 按键：Enter 执行 · Shift+Enter 换行 · Ctrl+Enter 执行并且一定问 DeepSeek · Tab 换目标语言 · Shift+Tab 翻译/润色
@@ -18,6 +18,7 @@ import { detectLang, detectKind } from './detect.js';
 import { diff, renderDiff } from './diff.js';
 import * as store from './history.js';
 import { yandexTranslate } from './yandex.js';
+import { googleTranslate } from './google.js';
 import { initBridge, sendToShell, shellKind } from './bridge.js';
 import { LANG, sourceLang, targetFor as pickTarget, looksLikeTerm, REG_SHORT } from './lang.js';
 
@@ -47,7 +48,7 @@ const state = {
   lastSrc: 'zh',
   ctrl: null,
   ranText: null, // 上次执行时的原文（切换语言 / 模式后，同一段原文自动重跑）
-  result: { deepseek: '', yandex: '' },
+  result: { deepseek: '', yandex: '', google: '' },
   lazyDeepSeek: null, // 单词时 DeepSeek 折叠着：点开时用这个函数去问
 };
 
@@ -242,7 +243,7 @@ async function copyFrom(svc) {
 }
 
 function primaryResult() {
-  return state.result.deepseek || state.result.yandex || '';
+  return state.result.deepseek || state.result.google || state.result.yandex || '';
 }
 
 async function copyPrimary() {
@@ -291,7 +292,7 @@ async function run(opts = {}) {
   const ctrl = new AbortController();
   state.ctrl = ctrl;
   state.ranText = text;
-  state.result = { deepseek: '', yandex: '' };
+  state.result = { deepseek: '', yandex: '', google: '' };
   state.lazyDeepSeek = null;
 
   const mode = state.viewMode;
@@ -304,8 +305,9 @@ async function run(opts = {}) {
   el.cards.replaceChildren();
   const jobs = [];
   if (mode === 'translate') {
-    const term = looksLikeTerm(text, src) && s.yandex;
-    if (s.yandex) jobs.push(runYandex(text, src, tgt, ctrl.signal));
+    const term = looksLikeTerm(text, src) && (s.yandex || s.google);
+    if (s.yandex) jobs.push(runMachine('yandex', text, src, tgt, ctrl.signal));
+    if (s.google) jobs.push(runMachine('google', text, src, tgt, ctrl.signal));
     if (term && !opts.forceDeepSeek) {
       // 像一个词：DeepSeek 先折叠着，点开才去问
       const c = card('deepseek', 'DeepSeek', 'D', { folded: true });
@@ -434,8 +436,15 @@ async function runDeepSeek(text, src, tgt, mode, signal, replaceNode) {
   }
 }
 
-async function runYandex(text, src, tgt, signal) {
-  const c = card('yandex', 'Yandex', 'Y');
+// 免 key 的机器翻译（Yandex、Google）：一次出整段结果
+const MACHINE = {
+  yandex: { name: 'Yandex', logo: 'Y', translate: yandexTranslate },
+  google: { name: 'Google', logo: 'G', translate: googleTranslate },
+};
+
+async function runMachine(svc, text, src, tgt, signal) {
+  const m = MACHINE[svc];
+  const c = card(svc, m.name, m.logo);
   el.cards.append(c.root);
   const out = make('div', 'pp-out streaming');
   out.lang = tgt === 'zh' ? 'zh-CN' : tgt;
@@ -443,8 +452,8 @@ async function runYandex(text, src, tgt, signal) {
   c.foot.hidden = true;
   const t0 = performance.now();
   try {
-    const r = await yandexTranslate(text, src, tgt, { signal });
-    state.result.yandex = r;
+    const r = await m.translate(text, src, tgt, { signal });
+    state.result[svc] = r;
     out.textContent = r;
     c.time.textContent = `${((performance.now() - t0) / 1000).toFixed(1)} 秒`;
     c.foot.hidden = false;
@@ -462,7 +471,7 @@ function fresh() {
   el.src.value = '';
   state.srcOverride = null;
   state.ranText = null;
-  state.result = { deepseek: '', yandex: '' };
+  state.result = { deepseek: '', yandex: '', google: '' };
   state.lazyDeepSeek = null;
   setViewMode(getSettings().popupMode, false);
   autoGrow();

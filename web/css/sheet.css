@@ -190,6 +190,7 @@ svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width:
 .res-name { display: inline-flex; align-items: center; gap: 10px; color: var(--fg); font-size: 18px; font-weight: 600; }
 .logo { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: #fff; font-size: 15px; font-weight: 700; }
 .logo.yandex { background: #fc3f1d; }
+.logo.google { background: #1a73e8; }
 .logo.deepseek { background: #4d6bfe; }
 .res-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 8px; }
 .res-out { color: var(--fg-out); font-size: 20px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }

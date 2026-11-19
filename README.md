@@ -26,6 +26,7 @@ web/                    The web app (this directory is what gets deployed to Git
   popup.html            PC popup page (modelled on pot: one result card per service)
   js/popup.js           PC popup logic
   js/yandex.js          Yandex Translate
+  js/google.js          Google Translate
   js/history.js         Local history (IndexedDB)
   sheet.html            Mobile page (what the Android app shows; full-screen layout)
   js/sheet.js           Mobile page logic
@@ -76,7 +77,7 @@ By default it does **not run automatically**: edit the text first if you like, t
 | `Ctrl+Enter` | Run, and always ask DeepSeek even for a single word |
 | `Tab` | Switch target language (remembered) |
 | `Shift+Tab` | Translate ⇄ Polish (remembered; `Alt+Q` reuses it) |
-| `Alt+C` | Copy the result (DeepSeek's if present, otherwise Yandex's) |
+| `Alt+C` | Copy the result (DeepSeek's if present, otherwise Google's, otherwise Yandex's) |
 | `Alt+V` | **Replace the original** with the result (switches back to the source window and pastes); every card also has a Replace button |
 | `Alt+P` | Pin: stays open when you click elsewhere, and stays on top |
 | `Alt+R` | Retry |
@@ -95,13 +96,13 @@ Clicking the target chip is the same as `Tab`. Short all-kanji words (e.g. 会�
 
 **Automatic routing when translating:**
 
-- **Looks like a single word** (short, with no punctuation, particles, verb endings, pronouns or function words) → **Yandex** only; the DeepSeek card stays collapsed until you open it or press `Ctrl+Enter`. Examples: 炊飯器, 根回し, 打ち合わせ, 明日の会議, 电饭煲, 不好意思, follow up.
-- **Sentence** → **Yandex + DeepSeek** together. Examples: 今日は暑い, 確認しました, 修好了, 麻烦你了, Let's go now.
+- **Looks like a single word** (short, with no punctuation, particles, verb endings, pronouns or function words) → **Yandex + Google** only; the DeepSeek card stays collapsed until you open it or press `Ctrl+Enter`. Examples: 炊飯器, 根回し, 打ち合わせ, 明日の会議, 电饭煲, 不好意思, follow up.
+- **Sentence** → **Yandex + Google + DeepSeek** together. Examples: 今日は暑い, 確認しました, 修好了, 麻烦你了, Let's go now.
 - When translating, DeepSeek returns only the result, no notes.
 
 **Polish**: DeepSeek only, with changes highlighted and notes. Text is polished in its own language; Chinese or mixed Chinese/Japanese is "written as Japanese" (Tab → as English). When polishing into Japanese, click the target chip to change the register (auto → です・ます → タメ口 → formal).
 
-The DeepSeek card uses the same three prompts as the main page: into Japanese = "Write Japanese", into Chinese = "To Chinese" (single words get a dictionary card), into English = "Write English". Yandex uses an unofficial endpoint (same as pot; no key needed, but strictly speaking it isn't within Yandex's terms of use and could stop working at any time); it can be turned off in Settings. Baidu isn't supported yet (its API can't be called directly from a web page and would need a proxy). Term lookup is not in the popup (it may become a separate tool later).
+The DeepSeek card uses the same three prompts as the main page: into Japanese = "Write Japanese", into Chinese = "To Chinese" (single words get a dictionary card), into English = "Write English". Yandex and Google use unofficial endpoints (same as pot; no key needed, but strictly speaking they aren't within the providers' terms of use and could stop working at any time); each can be turned off in Settings. Google's text is sent in the request body, not the URL. Bing isn't supported: its free route requires posing as the Edge browser; the official Microsoft Translator API (Azure, 2M characters/month free) would need a key. Baidu isn't supported yet (its API can't be called directly from a web page and would need a proxy). Term lookup is not in the popup (it may become a separate tool later).
 
 The popup hides itself when another window gets focus; a size you set by dragging the edges is remembered. For troubleshooting set `Debug=1` in the ini and every step is logged to `ahk/debug.log`.
 
@@ -149,7 +150,7 @@ Self-test (for development; briefly opens windows and simulates keystrokes): `Au
 Open it from the launcher icon or a floating-ball shortcut. It works full screen and in a small (freeform) window. Text, icons and buttons are sized large so it stays usable in a small window. The layout fills whatever window it gets:
 
 1. **First screen**: the source text fills the space; below it the target language (both candidates shown; tap to choose) and two big buttons, Translate (翻译) and Polish (润色), which sit right above the keyboard when it's open. **Enter = Translate** (Shift+Enter on a hardware keyboard inserts a new line).
-2. **Result screen**: the source on top (up to about 1/3 of the height), result cards filling the rest. When translating, swipe the cards left/right: Yandex first (fast), then DeepSeek; for a single word DeepSeek only runs once you swipe to it (saves money). Polish shows one DeepSeek card with changes highlighted and notes.
+2. **Result screen**: the source on top (up to about 1/3 of the height), result cards filling the rest. When translating, swipe the cards left/right: Yandex → Google → DeepSeek (fastest first); for a single word DeepSeek only runs once you swipe to it (saves money). Polish shows one DeepSeek card with changes highlighted and notes.
 3. Each result card has large buttons across the bottom: **Copy** (stays open) and **Replace** (only when the text came in from an editable field via the selection menu: puts the result in place of the original and closes).
 4. Back key: result screen → first screen → close.
 
