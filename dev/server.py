@@ -28,20 +28,23 @@ DELIM = "@@NOTES@@"
 # 调用记录在 window.__android 里（测试时用 JS 读出来看）
 FAKE_ANDROID = """
 (function () {
+  // 和真 App 一样：「选中的文字」在整个窗口里不变（第一页的网址参数里带进来，之后换页也记得）
   var sp = new URLSearchParams(location.search);
-  var log = (window.__android = []);
+  if (!sessionStorage.getItem('lh.fakeInit')) {
+    sessionStorage.setItem('lh.fakeInit', JSON.stringify({
+      text: sp.get('text') || '',
+      readonly: sp.get('readonly') !== '0',
+      source: sp.get('text') ? 'select' : 'launcher'
+    }));
+  }
+  var log = (window.__android = JSON.parse(sessionStorage.getItem('lh.fakeLog') || '[]'));
+  function push(x) { log.push(x); sessionStorage.setItem('lh.fakeLog', JSON.stringify(log)); }
   window.AndroidBridge = {
-    getInitial: function () {
-      return JSON.stringify({
-        text: sp.get('text') || '',
-        readonly: sp.get('readonly') !== '0',
-        source: sp.get('text') ? 'select' : 'launcher'
-      });
-    },
-    postMessage: function (s) { log.push(['postMessage', JSON.parse(s)]); },
-    copy: function (t) { log.push(['copy', t]); },
-    paste: function () { log.push(['paste']); return '假剪贴板里的文字'; },
-    showKeyboard: function () { log.push(['showKeyboard']); }
+    getInitial: function () { push(['getInitial', location.pathname]); return sessionStorage.getItem('lh.fakeInit'); },
+    postMessage: function (s) { push(['postMessage', JSON.parse(s)]); },
+    copy: function (t) { push(['copy', t]); },
+    paste: function () { push(['paste']); return '假剪贴板里的文字'; },
+    showKeyboard: function () { push(['showKeyboard']); }
   };
 })();
 """
@@ -127,15 +130,20 @@ class Handler(SimpleHTTPRequestHandler):
         if self.path.startswith("/__dev/fake-android.js"):
             self.send_bytes(FAKE_ANDROID.encode("utf-8"), "text/javascript; charset=utf-8")
             return
-        if self.path.startswith("/sheet-android.html"):
-            # sheet.html + 假的安卓壳（window.AndroidBridge），在电脑浏览器里测安卓那条路
-            html = (WEB / "sheet.html").read_text(encoding="utf-8")
-            html = html.replace(
-                '<script type="module" src="js/sheet.js">',
-                '<script src="__dev/fake-android.js"></script>\n<script type="module" src="js/sheet.js">',
-            )
-            self.send_bytes(html.encode("utf-8"), "text/html; charset=utf-8")
-            return
+        # /__dev/mock?android=1 之后：所有页面都带上假的安卓壳（像真 App 一样，每页都有 window.AndroidBridge）
+        from urllib.parse import urlparse
+
+        path = urlparse(self.path).path
+        if "lh_fake_android=1" in (self.headers.get("Cookie") or "") and (path.endswith(".html") or path.endswith("/")):
+            f = WEB / (path.lstrip("/") or "index.html")
+            if f.is_dir():
+                f = f / "index.html"
+            if f.is_file():
+                html = f.read_text(encoding="utf-8").replace(
+                    '<script type="module"', '<script src="/__dev/fake-android.js"></script>\n<script type="module"', 1
+                )
+                self.send_bytes(html.encode("utf-8"), "text/html; charset=utf-8")
+                return
         super().do_GET()
 
     def send_bytes(self, data: bytes, ctype: str):
@@ -160,12 +168,14 @@ class Handler(SimpleHTTPRequestHandler):
             "mode": q.get("mode", "ja"),
         }
         nxt = {k: q[k] for k in ("shell", "text", "pmode", "gap", "run", "ds", "readonly") if q.get(k)}
+        page_reset = "sessionStorage.removeItem('lh.fakeInit');sessionStorage.removeItem('lh.fakeLog');"
         path = q.get("next", "/")
         if not path.startswith("/") or path.startswith("//"):
             path = "/"
         target = path + (("?" + urlencode(nxt)) if nxt else "")
         page = (
             "<!doctype html><meta charset='utf-8'><script>"
+            f"{page_reset}"
             f"localStorage.setItem('lh.settings', JSON.stringify({json.dumps(settings)}));"
             f"location.replace({json.dumps(target)});"
             "</script>"
@@ -173,6 +183,10 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(page)))
+        if q.get("android") == "1":
+            self.send_header("Set-Cookie", "lh_fake_android=1; Path=/; SameSite=Strict")
+        else:
+            self.send_header("Set-Cookie", "lh_fake_android=; Path=/; Max-Age=0")
         self.end_headers()
         self.wfile.write(page)
 

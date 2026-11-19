@@ -15,7 +15,7 @@
         <!--
           同一个透明窗口，两个入口：
           1) 桌面图标（空的输入框）
-          2) 任何 App 里选中文字 → 菜单里的「译」（PROCESS_TEXT）。能改的输入框里还会显示「替换」。
+          2) 任何 App 里选中文字 → 菜单里的「lang-helper」（PROCESS_TEXT）。能改的输入框里还会显示「替换」。
         -->
         <activity
             android:name=".SheetActivity"

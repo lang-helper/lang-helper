@@ -8,7 +8,7 @@
 //         解出来是 `popup|动作|序号`（设置 / 历史页是 `popup-settings|…`）。
 //         「替换原文」时网页先把结果写进剪贴板，AHK 再切回原窗口按 Ctrl+V。
 //  - webview2：预留（若以后改用 WebView2.ahk）。chrome.webview.postMessage 双向通信。
-//  - android：P4 的安卓壳。AndroidBridge.getInitial() / AndroidBridge.postMessage()。
+//  - android：P4 的安卓壳（android/）。接口见 sheet.js 开头；index.html 在 App 里只当设置 / 历史页。
 //
 // 壳 → 网页：{ mode?: 'ja'|'zh'|'en'|'wiki', text: string, autorun?: boolean, canReplace?: boolean }
 // 网页 → 壳：{ action: 'replace', text } | { action: 'close' } | { action: 'copied' }
@@ -79,14 +79,9 @@ export function initBridge(open) {
   if (kind === 'webview2') {
     window.chrome.webview.addEventListener('message', (e) => open(normalize(e.data)));
   }
-  if (kind === 'android' && typeof window.AndroidBridge.getInitial === 'function') {
-    try {
-      const raw = window.AndroidBridge.getInitial();
-      if (raw) open(normalize(raw));
-    } catch {
-      /* ignore */
-    }
-  }
+  // 安卓：选中的文字只给手机弹窗（sheet.js 自己读 getInitial）。
+  // 主页面（index.html）在 App 里只当设置 / 历史页用，这里不能读——
+  // 以前读了会当成「传进来新文字」把 #settings 清掉，设置页一闪就跳回弹窗。
 }
 
 async function writeClipboard(text) {

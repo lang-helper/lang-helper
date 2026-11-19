@@ -41,14 +41,14 @@ jobs:
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           if [ -z "$KS_B64" ]; then
-            echo "::warning::没有设置签名密钥（ANDROID_KEYSTORE_BASE64），这次用临时签名：装新版前要先卸载旧版。"
+            echo "::warning::No signing key (ANDROID_KEYSTORE_BASE64) set; using a temporary signature. Uninstall the old version before installing this one."
             exit 0
           fi
           ks="$RUNNER_TEMP/release.p12"
           printf '%s' "$KS_B64" | base64 -d > "$ks"
           alias=$(keytool -list -v -keystore "$ks" -storetype PKCS12 -storepass:env KS_PASS | sed -n 's/^Alias name: //p' | head -n 1)
           if [ -z "$alias" ]; then
-            echo "::error::读不出密钥（密码不对，或 base64 不完整）"
+            echo "::error::Cannot read the keystore (wrong password, or incomplete base64)"
             exit 1
           fi
           {
@@ -78,9 +78,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           N: ${{ github.run_number }}
         run: |
-          signed=$([ -n "$KEYSTORE_FILE" ] && echo "正式签名" || echo "临时签名（装之前先卸载旧版）")
+          signed=$([ -n "$KEYSTORE_FILE" ] && echo "Signed with the release key" || echo "Temporary signature: uninstall the old version before installing")
           gh release create "android-v$N" lang-helper.apk \
-            --title "安卓 App 1.0.$N" \
-            --notes "选中文字 →「译」。$signed。提交：${GITHUB_SHA::7}" \
+            --title "Android app 1.0.$N" \
+            --notes "$signed. Commit: ${GITHUB_SHA::7}" \
             --target "$GITHUB_SHA" \
             --latest
