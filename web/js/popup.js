@@ -11,7 +11,7 @@
 // AHK 触发键：Ctrl+Alt+Shift+F9 = 切到翻译（不执行），F10 = 切到润色（不执行），F11 = 新开输入（清空）
 
 import { getSettings, saveSettings } from './settings.js';
-import { MODES, PROMPT_VERSION, buildMessages } from './prompts.js';
+import { MODES, PROMPT_VERSION, SUBJECT, buildMessages, buildSubjectMessages } from './prompts.js';
 import { streamChat } from './llm.js';
 import { splitOutput } from './output.js';
 import { detectLang, detectKind } from './detect.js';
@@ -29,6 +29,7 @@ const ICON = {
   replace: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h12l-3-3M20 16H8l3 3"/></svg>',
   diff: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v8M8 8h8M8 18h8"/></svg>',
   fold: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>',
+  mail: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>',
 };
 
 const el = {
@@ -50,6 +51,7 @@ const state = {
   ranText: null, // 上次执行时的原文（切换语言 / 模式后，同一段原文自动重跑）
   result: { deepseek: '', yandex: '', google: '' },
   lazyDeepSeek: null, // 单词时 DeepSeek 折叠着：点开时用这个函数去问
+  subjectCtrl: null, // 正在生成邮件标题
 };
 
 // ───────────────────────── 小工具 ─────────────────────────
@@ -289,6 +291,7 @@ async function run(opts = {}) {
   }
   const s = getSettings();
   cancel();
+  state.subjectCtrl?.abort();
   const ctrl = new AbortController();
   state.ctrl = ctrl;
   state.ranText = text;
@@ -411,6 +414,11 @@ async function runDeepSeek(text, src, tgt, mode, signal, replaceNode) {
       });
       c.foot.append(t);
     }
+    if (mode === 'polish') {
+      const t = iconButton(ICON.mail, '生成邮件标题（再点一次重新生成）');
+      t.addEventListener('click', () => genSubjects(c.body, tgt, p.result));
+      c.foot.append(t);
+    }
     c.foot.hidden = false;
 
     store
@@ -441,6 +449,55 @@ async function runDeepSeek(text, src, tgt, mode, signal, replaceNode) {
     }
     err.hidden = false;
     err.textContent = e.message + (e.detail ? `：${String(e.detail).slice(0, 120)}` : '');
+  }
+}
+
+// 润色后一键生成邮件标题：3 个候选，点一下复制（不会因 HideAfterCopy 收起弹窗，正文还要用）
+async function genSubjects(body, lang, text) {
+  state.subjectCtrl?.abort();
+  const ctrl = new AbortController();
+  state.subjectCtrl = ctrl;
+  let box = body.querySelector('.pp-subjects');
+  if (!box) {
+    box = make('div', 'pp-subjects');
+    body.append(box);
+  }
+  const head = make('div', 'pp-subjects-h', '邮件标题 · 生成中…');
+  const list = make('div', 'pp-subjects-l');
+  box.replaceChildren(head, list);
+
+  const paint = (full) => {
+    const lines = full
+      .split('\n')
+      .map((l) => l.trim().replace(/^(?:[-*•・]|\d+[.、)])\s*/, ''))
+      .filter(Boolean);
+    list.replaceChildren(
+      ...lines.map((t) => {
+        const b = make('button', 'pp-subject', t);
+        b.type = 'button';
+        b.lang = lang;
+        b.title = '复制这个标题';
+        b.addEventListener('click', async () => toast((await copyText(t)) ? '已复制标题' : '复制失败'));
+        return b;
+      }),
+    );
+  };
+
+  try {
+    const r = await streamChat({
+      messages: buildSubjectMessages(lang, text),
+      temperature: SUBJECT.temperature,
+      maxTokens: SUBJECT.maxTokens,
+      signal: ctrl.signal,
+      onText: paint,
+    });
+    paint(r.text);
+    head.textContent = '邮件标题（点一下复制）';
+  } catch (e) {
+    if (e.code === 'ABORTED') return;
+    head.textContent = '生成标题失败：' + e.message;
+  } finally {
+    if (state.subjectCtrl === ctrl) state.subjectCtrl = null;
   }
 }
 
@@ -476,6 +533,7 @@ async function runMachine(svc, text, src, tgt, signal) {
 // 新开输入（Alt+Q）：清空，回到保存的模式
 function fresh() {
   cancel();
+  state.subjectCtrl?.abort();
   el.src.value = '';
   state.srcOverride = null;
   state.ranText = null;

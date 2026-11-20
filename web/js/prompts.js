@@ -3,7 +3,7 @@
 // 可变参数（文体、类型）一律放进最后一条 user 消息。
 // 改提示词后请把 PROMPT_VERSION 加一，并在 tests.html 里跑一遍测试集对比。
 
-export const PROMPT_VERSION = '2026-11-19.2';
+export const PROMPT_VERSION = '2026-11-20.1';
 export const DELIM = '@@NOTES@@';
 
 const SAFETY =
@@ -182,6 +182,58 @@ ${DELIM}
 无需修改`,
   ],
 ];
+
+// ───────────────────────── 邮件标题（润色后一键生成） ─────────────────────────
+
+const SUBJECT_SYSTEM = `你是邮件标题助手。用户在日本工作，会给你一封邮件的【正文】，请为它写 3 个邮件标题候选。
+标题用用户消息里「语言」指定的语言（日语或英语）。
+
+【原则】
+1. 让收件人在收件箱里一眼看全：这封邮件关于什么、要对方做什么、有没有期限。
+2. 具体：写出对象（哪个项目、资料、会议）、动作（确认、修改、共享、提问、变更）和关键信息（日期、时间、金额、数量）。正文里没有的信息不要编。
+3. 简短：日语大约 15–30 字，英语大约 4–10 个词。日语用名词结尾（体言止め），不要写成完整的句子。
+4. 敬语要轻：不用「〜の件につきまして」「〜のお願い申し上げます」这类过重的说法；「ご確認」「ご相談」这种普通程度可以。
+5. 补充信息放括号：期限、对象、范围等放进（ ），例如「（11/25まで）」「（A社向け）」，多项用「・」隔开。
+6. 开头的【】标签只在需要时加：要对方确认、回复或做事时用【ご確認】【ご依頼】【ご相談】，紧急时用【至急】；只是通知或共享时可以用【共有】【連絡】，也可以不加。不要三个都加。英语标题一般不加标签。
+7. 三个候选要有区别：一个最简洁，一个信息最全，一个换个侧重点或说法。
+8. ${SAFETY.replace('【原文】', '【正文】')}
+
+【输出格式】每行一个标题，共 3 行；不加序号、引号或解释。`;
+
+const subjectUser = (lang, text) => `【语言】${lang}\n【正文】\n${text}`;
+
+const SUBJECT_EXAMPLES = [
+  [
+    subjectUser('日语', 'お疲れさまです。A社向けの見積書ですが、単価の計算に誤りがありました。修正版を添付しますので、11/25（火）までにご確認お願いします。'),
+    `【ご確認】A社見積書の修正版（11/25まで）
+A社見積書 単価の誤りの修正について
+【ご確認】A社向け見積書 単価修正（修正版添付・11/25期限）`,
+  ],
+  [
+    subjectUser('日语', '明日の定例会議ですが、会議室の都合で15時開始に変更になりました。場所は3階の会議室Bです。'),
+    `明日の定例会議 15時開始に変更
+【連絡】明日の定例会議の時間・場所変更（15時〜・3F会議室B）
+定例会議の開始時間変更のお知らせ（明日15時〜）`,
+  ],
+  [
+    subjectUser('英语', "Hi team, I've uploaded the Q3 sales report to the shared drive. Please review section 2 and send me any comments by Friday."),
+    `Q3 sales report: please review by Friday
+Review request: Q3 sales report (section 2, comments by Fri)
+Q3 sales report uploaded for your comments`,
+  ],
+];
+
+export const SUBJECT = { temperature: 0.5, maxTokens: 300 };
+
+/** 润色结果 → 邮件标题候选。lang：'ja' | 'en' */
+export function buildSubjectMessages(lang, text) {
+  const messages = [{ role: 'system', content: SUBJECT_SYSTEM }];
+  for (const [user, assistant] of SUBJECT_EXAMPLES) {
+    messages.push({ role: 'user', content: user }, { role: 'assistant', content: assistant });
+  }
+  messages.push({ role: 'user', content: subjectUser(lang === 'en' ? '英语' : '日语', text) });
+  return messages;
+}
 
 // ───────────────────────── 模式表 ─────────────────────────
 

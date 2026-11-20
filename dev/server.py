@@ -52,7 +52,7 @@ FAKE_ANDROID = """
 
 
 def extract_original(user: str) -> str:
-    m = re.search(r"【原文】\n([\s\S]*)$", user)
+    m = re.search(r"【(?:原文|正文)】\n([\s\S]*)$", user)
     return (m.group(1) if m else user).strip()
 
 
@@ -85,6 +85,9 @@ def mock_reply(system: str, user: str) -> str:
             {"ja": "電気釜", "reading": "でんきがま", "zh": "电饭锅", "en": "", "note": "模拟：稍旧的说法"},
             {"ja": "モギモギ器", "reading": "もぎもぎき", "zh": "模拟", "en": "", "note": "模拟：不存在的词，应显示未验证"},
         ]}, ensure_ascii=False)
+    if system.startswith("你是邮件标题助手"):
+        head = src.splitlines()[0][:20] if src else "模拟"
+        return f"【ご確認】{head}（模拟）\n{head} 模拟标题二\n模拟标题三（日期・对象）"
     if system.startswith("你是英语写作助手"):
         out = src.replace("kindly ", "").replace(" until ", " by ")
         if out == src:
