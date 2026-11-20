@@ -46,6 +46,7 @@ global gLastInvoke := 0
 global gPopupAlive := false   ; 上一次检查时弹窗窗口还在（用来发现「窗口没了」）
 global gLaunchingUntil := 0   ; 正在启动弹窗窗口（到这个时刻为止），这期间别再开第二个
 global gLastRewarm := 0       ; 上一次因为「窗口没了」而重新准备的时间（防止反复重开）
+global OFFSCREEN := -32000    ; 后台准备弹窗时把窗口开在屏幕外的这个位置
 
 SetTitleMatchMode 1       ; 标题「以……开头」
 DetectHiddenWindows true
@@ -253,6 +254,9 @@ EnsurePopup(hideAfter := false) {
     t0 := A_TickCount
     args := Format('--app="{1}" --user-data-dir="{2}" --no-first-run --no-default-browser-check --window-size={3},{4}'
         , PopupUrl(), CFG.Profile, CFG.Width, CFG.Height)
+    ; 后台准备：开在屏幕外面，看不见（要用的时候 PlaceNearMouse 会挪到鼠标旁边）
+    if hideAfter
+        args .= " --window-position=" OFFSCREEN "," OFFSCREEN
     gLaunchingUntil := A_TickCount + 15000
     try Run('"' CFG.Edge '" ' args)
     catch as e {
@@ -260,6 +264,8 @@ EnsurePopup(hideAfter := false) {
         MsgBox("启动 Edge 失败：`n" e.Message, "lang-helper", "Icon!")
         return 0
     }
+    if hideAfter
+        HideOffscreenSoon(prev, t0)
     hwnd := WaitPopup(15)
     gLaunchingUntil := 0
     if !hwnd {
@@ -278,6 +284,37 @@ EnsurePopup(hideAfter := false) {
             try WinActivate(prev)
     }
     return hwnd
+}
+
+; 后台准备的窗口开在屏幕外：一出现就藏起来、把焦点还给原来的窗口（不等网页加载完），基本看不到。
+; 注意：最小化的窗口坐标也是 -32000，所以要排除最小化的（不然会把你平时最小化的 Edge 藏掉）。
+HideOffscreenSoon(prev, t0) {
+    t := A_TickCount
+    while A_TickCount - t < 4000 {
+        for h in WinGetList("ahk_exe msedge.exe ahk_class Chrome_WidgetWin_1") {
+            if !IsOffscreen(h) || !DllCall("IsWindowVisible", "ptr", h)
+                continue
+            if gShownAt >= t0         ; 这期间你已经按快捷键把它叫出来了：别藏
+                return
+            WinHide(h)
+            if prev && prev != h && WinExist(prev)
+                try WinActivate(prev)
+            DebugLog("后台窗口已藏好（" A_TickCount - t0 " ms）")
+            return
+        }
+        Sleep(30)
+    }
+}
+
+; 在屏幕外（我们故意开在 -32000 的位置），并且不是最小化
+IsOffscreen(hwnd) {
+    try {
+        if WinGetMinMax(hwnd) = -1
+            return false
+        WinGetPos(&x, &y, , , hwnd)
+        return x <= OFFSCREEN + 1000 && y <= OFFSCREEN + 1000
+    }
+    return false
 }
 
 ; 弹窗窗口没了（点了标题栏的 ×、Edge 自己退出了……）：等你闲下来（2 秒没碰键盘鼠标）
@@ -420,7 +457,7 @@ Invoke(kind) {
         RestoreClip()
         return
     }
-    if !IsVisible(hwnd)
+    if !IsVisible(hwnd) || IsOffscreen(hwnd)   ; 屏幕外的（后台准备的）也挪到鼠标旁边
         PlaceNearMouse(hwnd)
     if !ShowPopup(hwnd) {
         DebugLog("弹窗没能激活，放弃这次操作")
