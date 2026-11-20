@@ -14,10 +14,18 @@
 ; 网页 → AHK：窗口标题 =「lang-helper」+ 看不见的零宽字符暗号（解出来是「popup|动作|序号」），AHK 每 0.1 秒看一次。
 ;
 ; 设置在同目录的 lang-helper.ini（第一次运行时从 lang-helper.example.ini 复制）。
+;
+; 托盘图标可以隐藏（ini 里 TrayIcon=0）。没有托盘菜单时：
+;   重新加载 = 再双击一次本脚本（新的会替换掉正在运行的）
+;   退出     = 运行「lang-helper.ahk /exit」，或在任务管理器里结束 AutoHotkey
 
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 Persistent
+
+; /exit：上面的 #SingleInstance Force 已经把正在运行的那个关掉了，这里自己也退出 = 退出 lang-helper
+if A_Args.Length >= 1 && A_Args[1] = "/exit"
+    ExitApp
 
 ; 弹窗窗口标题：看得见的「lang-helper」+ 看不见的暗号（U+2063 开头的零宽字符，见 DecodeTitle）
 global TITLE_PREFIX := "lang-helper" Chr(0x2063)
@@ -35,6 +43,9 @@ global gShownAt := 0
 global gBlurTicks := 0
 global gPopupHwnd := 0    ; 记住自己打开的弹窗窗口（页面重新加载时标题会短暂变化，不能只靠标题找）
 global gLastInvoke := 0
+global gPopupAlive := false   ; 上一次检查时弹窗窗口还在（用来发现「窗口没了」）
+global gLaunchingUntil := 0   ; 正在启动弹窗窗口（到这个时刻为止），这期间别再开第二个
+global gLastRewarm := 0       ; 上一次因为「窗口没了」而重新准备的时间（防止反复重开）
 
 SetTitleMatchMode 1       ; 标题「以……开头」
 DetectHiddenWindows true
@@ -71,6 +82,7 @@ LoadConfig(path) {
     c.HideAfterCopy := IniRead(path, "Popup", "HideAfterCopy", "0") = "1"
     c.Debug := IniRead(path, "Popup", "Debug", "0") = "1"
     c.AutoRun := IniRead(path, "Popup", "AutoRun", "0") = "1"
+    c.TrayIcon := IniRead(path, "Popup", "TrayIcon", "1") = "1"
     c.Edge := IniRead(path, "Popup", "Edge", "")
     if c.Edge = ""
         c.Edge := FindEdge()
@@ -218,36 +230,72 @@ DecodeTitle(title) {
     return out
 }
 
+; hideAfter = 后台准备（预热）：开好后藏起来，把焦点还给原来的窗口
 EnsurePopup(hideAfter := false) {
-    global gPopupHwnd
+    global gPopupHwnd, gLaunchingUntil
     if hwnd := FindPopup()
         return hwnd
+    ; 后台正在准备弹窗：等它出来，不要再开一个
+    if A_TickCount < gLaunchingUntil {
+        if hwnd := WaitPopup((gLaunchingUntil - A_TickCount) / 1000) {
+            gPopupHwnd := hwnd
+            return hwnd
+        }
+    }
     ; 页面可能正在重新加载（标题里暂时没有暗号）：先等一下，免得重复开窗口
     if hwnd := WaitPopup(1.2) {
         gPopupHwnd := hwnd
         return hwnd
     }
-    DebugLog("启动新的弹窗窗口")
+    DebugLog(hideAfter ? "后台准备新的弹窗窗口" : "启动新的弹窗窗口（冷启动，要几秒）")
     DirCreate(CFG.Profile)
+    prev := WinExist("A")
+    t0 := A_TickCount
     args := Format('--app="{1}" --user-data-dir="{2}" --no-first-run --no-default-browser-check --window-size={3},{4}'
         , PopupUrl(), CFG.Profile, CFG.Width, CFG.Height)
+    gLaunchingUntil := A_TickCount + 15000
     try Run('"' CFG.Edge '" ' args)
     catch as e {
+        gLaunchingUntil := 0
         MsgBox("启动 Edge 失败：`n" e.Message, "lang-helper", "Icon!")
         return 0
     }
     hwnd := WaitPopup(15)
+    gLaunchingUntil := 0
     if !hwnd {
         DebugLog("弹窗页面 15 秒内没打开")
-        TrayTip("打不开弹窗页面：" CFG.Url "`n本地服务器开着吗？或者改 lang-helper.ini 里的 Url。", "lang-helper", "Iconx")
+        Notify("打不开弹窗页面：" CFG.Url "`n网络通吗？或者改 lang-helper.ini 里的 Url。", "Iconx")
         return 0
     }
     gPopupHwnd := hwnd
+    DebugLog("弹窗窗口准备好了（" A_TickCount - t0 " ms）")
     if CFG.SavedW > 200 && CFG.SavedH > 200
         WinMove(, , CFG.SavedW, CFG.SavedH, hwnd)
-    if hideAfter
+    ; 后台准备的：藏起来。但这期间你已经按快捷键把它叫出来了的话（gShownAt 更新过），就别藏
+    if hideAfter && gShownAt < t0 {
         WinHide(hwnd)
+        if prev && prev != hwnd && WinExist(prev)
+            try WinActivate(prev)
+    }
     return hwnd
+}
+
+; 弹窗窗口没了（点了标题栏的 ×、Edge 自己退出了……）：等你闲下来（2 秒没碰键盘鼠标）
+; 再在后台重新准备一个，下次按快捷键还是 0.5 秒左右就出来，不用冷启动 Edge（要 2.5–4 秒）
+RewarmWhenIdle() {
+    global gLastRewarm
+    if FindPopup() || A_TickCount < gLaunchingUntil
+        return                       ; 已经有了 / 正在开
+    if A_TimeIdlePhysical < 2000 {
+        SetTimer(RewarmWhenIdle, -1000)
+        return
+    }
+    if A_TickCount - gLastRewarm < 60000 {
+        DebugLog("1 分钟内已经重新准备过，这次不自动重开（等下次按快捷键再开）")
+        return
+    }
+    gLastRewarm := A_TickCount
+    EnsurePopup(true)
 }
 
 IsVisible(hwnd) {
@@ -327,6 +375,7 @@ PlaceNearMouse(hwnd) {
 ; 按下快捷键。kind = translate | polish | input
 Invoke(kind) {
     global gOrigHwnd, gSavedClip, gHasSaved
+    t0 := A_TickCount
     popup := FindPopup()
     active := WinExist("A")
     DebugLog("按下 " kind "：弹窗=" (popup ? (IsVisible(popup) ? "显示中" : "隐藏") : "不存在") " 前台=" (active = popup ? "弹窗" : WinGetProcessNameSafe(active)))
@@ -380,12 +429,14 @@ Invoke(kind) {
     }
     if kind = "input" {
         Send("^!+{F11}")              ; 新开输入：清空，回到上次的「翻译 / 润色」
+        DebugLog("就绪：" A_TickCount - t0 " ms")
         return
     }
     Send("^a")
     Send("^v")
     Sleep(60)
     Send(kind = "translate" ? "^!+{F9}" : "^!+{F10}")   ; 切到翻译 / 润色，光标停在末尾，不执行
+    DebugLog("就绪：" A_TickCount - t0 " ms")
     if CFG.AutoRun {
         Sleep(60)
         Send("{Enter}")
@@ -400,10 +451,18 @@ RestoreClip() {
 
 ; 每 0.1 秒：处理网页发来的动作；没固定时，弹窗不在前台就收起
 WatchPopup() {
-    global gLastSeq, gBlurTicks
+    global gLastSeq, gBlurTicks, gPopupAlive
     hwnd := FindPopup()
-    if !hwnd
+    if !hwnd {
+        if gPopupAlive {
+            gPopupAlive := false
+            DebugLog("弹窗窗口没了（点了 × / Edge 退出了），闲下来后在后台重新准备")
+            if CFG.Prewarm
+                SetTimer(RewarmWhenIdle, -2000)
+        }
         return
+    }
+    gPopupAlive := true
     try title := WinGetTitle(hwnd)
     catch
         return
@@ -477,6 +536,9 @@ UnixMs() {
 ; ───────────────────────── 托盘菜单 ─────────────────────────
 
 SetupTray() {
+    ; TrayIcon=0：不显示托盘图标（快捷键照常工作；重新加载 / 退出见文件开头的说明）
+    A_IconHidden := !CFG.TrayIcon
+    DebugLog("启动：TrayIcon=" (CFG.TrayIcon ? 1 : 0) " Url=" CFG.Url)
     A_IconTip := "lang-helper（" HotkeyText(CFG.Keys["translate"]) " 翻译 · " HotkeyText(CFG.Keys["polish"]) " 润色 · " HotkeyText(CFG.Keys["input"]) " 输入）"
     m := A_TrayMenu
     m.Delete()
@@ -489,6 +551,16 @@ SetupTray() {
     m.Add("重新加载", (*) => Reload())
     m.Add("退出", (*) => ExitApp())
     m.Default := "打开弹窗"
+}
+
+; 提示：有托盘图标时用系统通知；图标隐藏时系统通知出不来，改成鼠标旁边的提示（6 秒后消失）
+Notify(msg, icon := "Iconi") {
+    if !A_IconHidden {
+        TrayTip(msg, "lang-helper", icon)
+        return
+    }
+    ToolTip("lang-helper：" msg)
+    SetTimer(() => ToolTip(), -6000)
 }
 
 HotkeyText(k) {

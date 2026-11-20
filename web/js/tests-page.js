@@ -18,7 +18,8 @@ for (const m of Object.keys(MODES)) {
   if (c) c.textContent = `(${cases[m]?.length || 0})`;
 }
 
-const keyOf = (mode, c) => `${mode}|${c.register || ''}|${c.input}`;
+// notes:false 的用例 = PC 弹窗 / 手机「翻译」时的调用方式（只要译文、不要要点），另记一个 key
+const keyOf = (mode, c) => `${mode}|${c.register || ''}|${c.input}` + (c.notes === false ? '|nonotes' : '');
 const load = (k) => {
   try {
     return JSON.parse(localStorage.getItem(k) || 'null');
@@ -41,13 +42,16 @@ function paramsFor(mode, c) {
     const lang = detectLang(c.input);
     p.kind = detectKind(c.input, lang === 'en' ? 'en' : 'ja');
   }
+  if (c.notes === false) p.notes = false;
   return p;
 }
 
 function describeParams(mode, p) {
-  if (mode === 'ja') return `文体：${REGISTERS[p.register]}`;
-  if (mode === 'zh') return `类型：${p.kind}`;
-  return '';
+  const parts = [];
+  if (mode === 'ja') parts.push(`文体：${REGISTERS[p.register]}`);
+  if (mode === 'zh') parts.push(`类型：${p.kind}`);
+  if (p.notes === false) parts.push('翻译模式：不要要点');
+  return parts.join(' · ');
 }
 
 function render(current, prev) {
@@ -78,6 +82,11 @@ function render(current, prev) {
       tdOut.lang = MODES[mode].outLang;
       if (cur && old && !cur.error && cur.output !== old.output) tdOut.classList.add('changed');
       if (cur && c.expectUnchanged && cur.output.trim() !== c.input.trim()) tdOut.classList.add('flag');
+      // 翻译模式要求不给要点：给了就标红
+      if (cur && !cur.error && c.notes === false && (cur.notes?.length || /@@NOTES@@/.test(cur.output))) {
+        tdOut.classList.add('flag');
+        tdOut.append(make('div', 'hint', '✗ 翻译模式不该有要点'));
+      }
       if (cur?.ms) tdOut.append(make('div', 'hint', `${(cur.ms / 1000).toFixed(1)}s`));
       tr.append(tdOut, make('td', 't-notes', cur?.notes?.join('\n') || ''));
       const tdOld = make('td', 't-notes', old ? old.error || old.output : '');
