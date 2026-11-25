@@ -589,7 +589,7 @@ async function followLink(lang, title, hash) {
     if (my !== state.seq) return;
     if (!res.list.length) {
       setStatus('');
-      window.open(wikiUrl(lang, title) + (hash || ''), '_blank', 'noopener');
+      openExternal(wikiUrl(lang, title) + (hash || ''));
       return;
     }
     state.stack.push(prev);
@@ -652,6 +652,19 @@ function back() {
 }
 
 // ───────────────────────── 复制 / 打开 ─────────────────────────
+
+/**
+ * 在浏览器里打开维基百科等外部网址。PC 弹窗里交给 AHK 用系统默认浏览器打开
+ * （弹窗是单独配置的 Edge 小窗，自己开新窗口会开出一个 Edge，还可能藏在后面）。
+ * 网址经窗口标题传过去，太长的（超过标题能放的长度）就还是自己开。
+ */
+function openExternal(url) {
+  if (shell === 'ahk' && /^https:\/\/[!-~]+$/.test(url) && url.length <= 500) {
+    sendToShell({ action: 'open ' + url });
+    return;
+  }
+  window.open(url, '_blank', 'noopener');
+}
 
 async function copyTitle() {
   const a = current();
@@ -816,6 +829,16 @@ function bind() {
       }
     }
   });
+
+  // PC 弹窗：所有「新窗口打开」的链接（维基百科按钮、正文里的外部链接、去维基搜）都交给默认浏览器
+  if (shell === 'ahk') {
+    document.addEventListener('click', (ev) => {
+      const a = ev.target.closest?.('a[target="_blank"]');
+      if (!a || ev.defaultPrevented || ev.button) return;
+      ev.preventDefault();
+      openExternal(a.href);
+    });
+  }
 
   // 安卓返回键：先退回上一个条目 / 摘要，没有可退的就关闭
   window.lhBack = () => (back() ? 'handled' : '');

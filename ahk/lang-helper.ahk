@@ -682,6 +682,10 @@ WinGetProcessNameSafe(hwnd) {
 HandleSignal(action, hwnd) {
     global gPinned
     DebugLog("网页信号：" action)
+    if SubStr(action, 1, 5) = "open " {   ; wiki 速查里点了「维基百科」等链接：用默认浏览器打开
+        OpenUrl(SubStr(action, 6))
+        return
+    }
     switch action {
         case "close":
             HidePopup()
@@ -695,6 +699,21 @@ HandleSignal(action, hwnd) {
             gPinned := action = "pin-on"
             try WinSetAlwaysOnTop(gPinned, hwnd)
     }
+}
+
+; 用系统默认浏览器打开网址。网址是网页经窗口标题传过来的：只认维基百科 / Wikidata / 维基媒体的 https 网址，
+; 不能让网页借这里运行别的程序
+OpenUrl(url) {
+    if !RegExMatch(url, "i)^https://([a-z0-9-]+\.)*(wikipedia|wikidata|wikimedia)\.org(/[!-~]*)?$") || InStr(url, '"') {
+        DebugLog("拒绝打开（不是维基的网址）：" url)
+        return
+    }
+    if !gPinned
+        HidePopup(false)              ; 收起弹窗，让浏览器到前面来
+    DllCall("AllowSetForegroundWindow", "UInt", 0xFFFFFFFF)
+    try Run(url)
+    catch as e
+        DebugLog("打开网址失败：" e.Message)
 }
 
 ; 网页已经把结果写进剪贴板：收起弹窗，切回原窗口，粘贴
