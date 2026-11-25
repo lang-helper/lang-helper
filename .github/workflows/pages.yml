@@ -12,6 +12,9 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  # deploy-pages 要列出本次运行上传的网页包（github-pages）。没有这个权限时会报
+  # 「No artifacts named "github-pages" were found」（2026-11-25 同样的配置突然连续失败，加上这个试试）
+  actions: read
 
 concurrency:
   group: pages
