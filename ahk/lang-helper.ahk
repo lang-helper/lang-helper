@@ -47,6 +47,9 @@ global gPopupAlive := false   ; 上一次检查时弹窗窗口还在（用来发
 global gLaunchingUntil := 0   ; 正在启动弹窗窗口（到这个时刻为止），这期间别再开第二个
 global gLastRewarm := 0       ; 上一次因为「窗口没了」而重新准备的时间（防止反复重开）
 global OFFSCREEN := -32000    ; 后台准备弹窗时把窗口开在屏幕外的这个位置
+global gLastAlive := 0        ; 最近一次收到网页任何信号（含每分钟的心跳）的时间
+global gSawHeartbeat := false ; 这个弹窗的网页会发心跳（旧版网页不发，就不按心跳判断）
+global STALE_MS := 180000     ; 藏着的弹窗超过 3 分钟没心跳 = 网页被 Edge 冻结 / 回收了
 
 SetTitleMatchMode 1       ; 标题「以……开头」
 DetectHiddenWindows true
@@ -63,6 +66,7 @@ CFG := LoadConfig(INI)
 SetupTray()
 RegisterHotkeys()
 SetTimer(WatchPopup, 100)
+SetTimer(CheckPopupHealth, 30000)
 if CFG.Prewarm
     SetTimer(() => EnsurePopup(true), -1500)
 
@@ -254,6 +258,8 @@ EnsurePopup(hideAfter := false) {
     t0 := A_TickCount
     args := Format('--app="{1}" --user-data-dir="{2}" --no-first-run --no-default-browser-check --window-size={3},{4}'
         , PopupUrl(), CFG.Profile, CFG.Width, CFG.Height)
+    ; 藏着的弹窗别被 Edge 降速 / 冻结（心跳要按时发，再显示时也不用等它醒）
+    args .= " --disable-renderer-backgrounding --disable-background-timer-throttling --disable-backgrounding-occluded-windows"
     ; 后台准备：开在屏幕外面，看不见（要用的时候 PlaceNearMouse 会挪到鼠标旁边）
     if hideAfter
         args .= " --window-position=" OFFSCREEN "," OFFSCREEN
@@ -315,6 +321,28 @@ IsOffscreen(hwnd) {
         return x <= OFFSCREEN + 1000 && y <= OFFSCREEN + 1000
     }
     return false
+}
+
+; 每 30 秒：藏着的弹窗如果超过 3 分钟没心跳（网页被 Edge 冻结 / 回收了，再显示会黑好几秒），
+; 趁你没在用（2 秒没碰键盘鼠标）把它关掉；WatchPopup 发现窗口没了，会在屏幕外悄悄准备一个新的。
+CheckPopupHealth() {
+    if !gSawHeartbeat || A_TickCount < gLaunchingUntil
+        return
+    hwnd := FindPopup()
+    if !hwnd || IsVisible(hwnd)
+        return
+    if A_TickCount - gLastAlive < STALE_MS || A_TimeIdlePhysical < 2000
+        return
+    DebugLog("弹窗网页 " Round((A_TickCount - gLastAlive) / 60000) " 分钟没心跳（被 Edge 冻结 / 回收了），后台换一个新的")
+    try WinClose(hwnd)
+}
+
+; 等网页有反应（收到任何信号，包括心跳），最多 ms 毫秒
+WaitPageAlive(since, ms) {
+    t := A_TickCount
+    while gLastAlive < since && A_TickCount - t < ms
+        Sleep(50)
+    return gLastAlive >= since
 }
 
 ; 弹窗窗口没了（点了标题栏的 ×、Edge 自己退出了……）：等你闲下来（2 秒没碰键盘鼠标）
@@ -459,10 +487,16 @@ Invoke(kind) {
     }
     if !IsVisible(hwnd) || IsOffscreen(hwnd)   ; 屏幕外的（后台准备的）也挪到鼠标旁边
         PlaceNearMouse(hwnd)
+    tShow := A_TickCount
     if !ShowPopup(hwnd) {
         DebugLog("弹窗没能激活，放弃这次操作")
         RestoreClip()
         return
+    }
+    ; 网页一阵子没心跳：可能刚被唤醒 / 正在重新加载。等它有反应再粘贴、发指令，免得文字丢了
+    if gSawHeartbeat && A_TickCount - gLastAlive > 90000 {
+        ok := WaitPageAlive(tShow, 6000)
+        DebugLog("网页" (ok ? "醒了" : "6 秒内没反应") "（等了 " A_TickCount - tShow " ms）")
     }
     if kind = "input" {
         Send("^!+{F11}")              ; 新开输入：清空，回到上次的「翻译 / 润色」
@@ -488,11 +522,13 @@ RestoreClip() {
 
 ; 每 0.1 秒：处理网页发来的动作；没固定时，弹窗不在前台就收起
 WatchPopup() {
-    global gLastSeq, gBlurTicks, gPopupAlive
+    global gLastSeq, gBlurTicks, gPopupAlive, gLastAlive, gSawHeartbeat
     hwnd := FindPopup()
     if !hwnd {
         if gPopupAlive {
             gPopupAlive := false
+            gSawHeartbeat := false           ; 新窗口重新开始算
+            gLastAlive := 0
             DebugLog("弹窗窗口没了（点了 × / Edge 退出了），闲下来后在后台重新准备")
             if CFG.Prewarm
                 SetTimer(RewarmWhenIdle, -2000)
@@ -506,8 +542,15 @@ WatchPopup() {
     parts := StrSplit(DecodeTitle(title), "|")
     if parts.Length >= 3 && parts[3] != gLastSeq {
         gLastSeq := parts[3]
-        if IsNumber(parts[3]) && Number(parts[3]) >= START_MS   ; 脚本启动前留下的旧信号忽略
-            HandleSignal(parts[2], hwnd)
+        if IsNumber(parts[3]) && Number(parts[3]) >= START_MS {  ; 脚本启动前留下的旧信号忽略
+            gLastAlive := A_TickCount
+            if parts[2] = "alive" {          ; 心跳：只记时间，不写日志（每分钟一次，太多）
+                if !gSawHeartbeat
+                    DebugLog("收到网页心跳（之后藏久了没心跳会在后台刷新弹窗）")
+                gSawHeartbeat := true
+            } else
+                HandleSignal(parts[2], hwnd)
+        }
     }
 
     if !CFG.HideOnBlur || gPinned || !IsVisible(hwnd) || A_TickCount - gShownAt < 500

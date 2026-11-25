@@ -44,6 +44,11 @@ export function setShellPage(suffix = '') {
 const urlShell = new URLSearchParams(location.search).get('shell');
 if (urlShell === 'ahk') sessionStorage.setItem('lh.shell', 'ahk');
 
+// PC 弹窗：每分钟给 AHK 发一次「还活着」。弹窗藏久了 Edge 会把网页冻结 / 回收（再显示时要重新加载，
+// 窗口会黑几秒）；AHK 一段时间收不到心跳，就趁你没在用的时候在后台把弹窗换成新的。
+const HEARTBEAT_MS = 60_000;
+if (shellKind() === 'ahk') setInterval(() => sendToShell({ action: 'alive' }), HEARTBEAT_MS);
+
 export function shellKind() {
   if (sessionStorage.getItem('lh.shell') === 'ahk') return 'ahk';
   if (window.chrome && window.chrome.webview) return 'webview2';
