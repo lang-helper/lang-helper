@@ -266,9 +266,21 @@ async function verifyJaTitles(terms, signal) {
     const id = p.pageprops?.wikibase_item;
     if (id && p.pageprops.disambiguation === undefined) byTitle.set(p.title, id);
   }
-  const qids = [...new Set(terms.map((t) => byTitle.get(follow(t))).filter(Boolean))];
+  // 重定向到某个列表的一节（シャリタツ → ポケモンの一覧#シャリタツ）：算有条目，但链接留在这个标题上（显示时只取那一节），
+  // 不能拿列表页的 Wikidata 编号
+  const toSection = (t) => {
+    let x = t;
+    for (const n of q.normalized || []) if (n.from === x) x = n.to;
+    return (q.redirects || []).some((r) => r.from === x && r.tofragment) ? x : '';
+  };
+  const qids = [...new Set(terms.filter((t) => !toSection(t)).map((t) => byTitle.get(follow(t))).filter(Boolean))];
   const byId = new Map((await getEntities(qids, signal)).map((c) => [c.id, c]));
   for (const t of terms) {
+    const s = toSection(t);
+    if (s) {
+      out.set(t, { id: '', ja: s, jaTitle: s, jaAliases: [], zh: '', en: '', desc: '', descLang: '', descJa: '', links: { ja: s } });
+      continue;
+    }
     const c = byId.get(byTitle.get(follow(t)));
     if (c) out.set(t, c);
   }
@@ -310,9 +322,14 @@ async function exactTitle(wiki, title, signal) {
   const p = j.query?.pages?.[0];
   if (!p || p.missing || p.invalid || p.ns !== 0) return null;
   if (p.pageprops && 'disambiguation' in p.pageprops) return { disambig: true, wiki, title: p.title };
+  const redirect = (j.query.redirects || [])[0];
+  if (redirect?.tofragment) {
+    // 重定向到别的条目里的一节（例：米立龙 → 第九世代宝可梦列表#米立龍）：那个页面和它的其他语言版都是整个列表，
+    // 只留下这个重定向标题，显示时只取那一节（getSummary / getArticle）
+    return { id: '', wiki, section: true, links: { [wiki]: redirect.from }, labels: { [wiki]: redirect.tofragment }, desc: '', via: '' };
+  }
   const links = { [wiki]: p.title };
   for (const l of p.langlinks || []) if (WIKI_LANGS.includes(l.lang) && !links[l.lang]) links[l.lang] = l.title;
-  const redirect = (j.query.redirects || [])[0];
   return {
     id: p.pageprops?.wikibase_item || '',
     links,
@@ -419,11 +436,16 @@ export async function findArticles(query, { signal } = {}) {
   const wikis = lang === 'ja' ? ['ja'] : lang === 'han' ? ['zh', 'ja'] : ['en'];
   let res = null;
   let disambig = null;
+  let sectionHit = null; // 只是重定向到某个列表的小节：先去 Wikidata 找它自己的条目，找不到再用
   for (const w of wikis) {
     const hit = await exactTitle(w, q, signal);
     if (hit?.disambig) {
       disambig = hit;
       break;
+    }
+    if (hit?.section) {
+      sectionHit = sectionHit || hit;
+      continue;
     }
     if (hit) {
       res = { list: [hit], kind: 'title' };
@@ -435,6 +457,16 @@ export async function findArticles(query, { signal } = {}) {
     if (list.length) res = { list, kind: 'disambig' };
   }
   if (!res) res = { list: (await searchTerms(q, { signal, jaFirst: false })).map(fromCandidate).filter(Boolean), kind: 'search' };
+  if (sectionHit && res.kind === 'search') {
+    // 搜索结果里有名字完全一样的（米立龙 → シャリタツ / Tatsugiri）就直接打开它，没有才退回那个小节
+    const same = res.list.find((a) => Object.values(a.labels).includes(q));
+    if (same) {
+      const w = sectionHit.wiki;
+      if (!same.links[w]) same.links[w] = sectionHit.links[w]; // 这种语言也只有一节，一样显示
+      if (!same.labels[w]) same.labels[w] = sectionHit.labels[w];
+      res = { list: [same], kind: 'title' };
+    } else if (!res.list.length) res = { list: [sectionHit], kind: 'title' };
+  }
   return remember(findCache, q, res, 100);
 }
 
@@ -484,6 +516,11 @@ export async function getSummary(lang, title, { signal } = {}) {
     throw e;
   }
   const display = (j.titles?.display || j.displaytitle || j.title || title).replace(/<[^>]*>/g, '');
+  // 被重定向到了别的页面：如果是到某一节（米立龙 → 宝可梦列表#米立龍），摘要只取那一节
+  if (j.title && j.title.replace(/_/g, ' ') !== title.replace(/_/g, ' ')) {
+    const sec = await sectionOf(lang, title, signal);
+    if (sec) return remember(sumCache, key, await sectionSummary(lang, title, sec, signal), 60);
+  }
   return remember(
     sumCache,
     key,
@@ -501,22 +538,106 @@ export async function getSummary(lang, title, { signal } = {}) {
 
 const artCache = new Map();
 
-/** 全文（MediaWiki 解析好的 HTML，中文转成简体）。插进页面之前要先用 wiki-reader.js 清理 */
+/** 全文（MediaWiki 解析好的 HTML，中文转成简体）。插进页面之前要先用 wiki-reader.js 清理。
+ *  标题是「重定向到某一节」时只取那一节。 */
 export async function getArticle(lang, title, { signal } = {}) {
   const key = `${lang}:${title}`;
   if (artCache.has(key)) return artCache.get(key);
-  const params = {
-    action: 'parse',
-    formatversion: 2,
-    page: title,
-    prop: 'text|displaytitle',
-    redirects: 1,
-    disableeditsection: 1,
-    disablelimitreport: 1,
-    disabletoc: 1,
-  };
-  if (lang === 'zh') params.variant = 'zh-cn';
-  const j = await getJson(apiUrl(`https://${lang}.wikipedia.org/w/api.php`, params), signal);
+  const known = secCache.get(key); // 摘要那边已经查过是某一节，就不用先取整页
+  if (known?.index) return remember(artCache, key, await parseSection(lang, known, signal), 8);
+  const j = await parse(lang, { page: title, prop: 'text|displaytitle|sections', redirects: 1, disabletoc: 1 }, signal);
+  const sec = findSection(j.parse);
+  remember(secCache, key, sec, 100);
+  if (sec?.index) return remember(artCache, key, await parseSection(lang, sec, signal), 8);
+  const part = sec ? excerpt(j.parse.text, sec.anchor) : null;
+  return remember(artCache, key, { title: j.parse.title, html: part || j.parse.text }, 8);
+}
+
+// ───────────── 重定向到某一节（列表里的一项，例：米立龙 / シャリタツ / Tatsugiri → 宝可梦列表的那一节） ─────────────
+
+// `${lang}:${title}` → {page, index, anchor, line} | null（不是重定向到某一节）
+// index 为空：锚点不在标题上，而在表格的一行或一段文字里（中文、英文的宝可梦列表就是一张大表）
+const secCache = new Map();
+
+async function parse(lang, params, signal) {
+  const p = { action: 'parse', formatversion: 2, disableeditsection: 1, disablelimitreport: 1, ...params };
+  if (lang === 'zh') p.variant = 'zh-cn';
+  const j = await getJson(apiUrl(`https://${lang}.wikipedia.org/w/api.php`, p), signal);
   if (j.error) throw j.error.code === 'missingtitle' ? NOT_FOUND : new Error(j.error.info || j.error.code);
-  return remember(artCache, key, { title: j.parse.title, html: j.parse.text }, 8);
+  return j;
+}
+
+/** parse 的结果（要带 redirects 和 sections）→ 重定向指向的那一节；不是重定向到某一节就返回 null */
+function findSection(p) {
+  const frag = p?.redirects?.[0]?.tofragment;
+  if (!frag) return null;
+  const norm = (s) => String(s || '').replace(/<[^>]*>/g, '').replace(/_/g, ' ').trim();
+  const s = (p.sections || []).find((x) => /^\d+$/.test(x.index) && (norm(x.anchor) === norm(frag) || norm(x.line) === norm(frag)));
+  return s
+    ? { page: p.title, index: s.index, anchor: s.anchor, line: norm(s.line) }
+    : { page: p.title, index: '', anchor: frag, line: norm(frag) };
+}
+
+/** 整页 HTML 里锚点所在的那一块：表格里的一行（连同表头），或者所在的那段文字。找不到锚点返回 null */
+function excerpt(html, anchor) {
+  const doc = parseWikiHtml(html);
+  const el = doc.getElementById(anchor) || doc.getElementById(String(anchor).replace(/ /g, '_'));
+  if (!el) return null;
+  const tr = el.closest('tr');
+  if (tr) {
+    const table = tr.closest('table');
+    // 表头：第一行数据之前的所有行（可能有两层，例如「属性」下面再分两列）
+    const rows = [...table.querySelectorAll('tr')];
+    const head = rows.slice(0, Math.max(0, rows.findIndex((r) => r.querySelector('td')))).filter((r) => r !== tr);
+    for (const n of tr.querySelectorAll('.sortkey')) n.remove(); // 排序用的隐藏文字
+    return `<table class="${table.className}">${head.map((r) => r.outerHTML).join('')}${tr.outerHTML}</table>`;
+  }
+  return el.closest('p, li, dd, dl, blockquote')?.outerHTML || null;
+}
+
+/** 这个标题是不是重定向到某一节（只取目录，请求很小） */
+async function sectionOf(lang, title, signal) {
+  const key = `${lang}:${title}`;
+  if (secCache.has(key)) return secCache.get(key);
+  const j = await parse(lang, { page: title, prop: 'sections', redirects: 1 }, signal);
+  return remember(secCache, key, findSection(j.parse), 100);
+}
+
+async function parseSection(lang, sec, signal) {
+  const j = await parse(lang, { page: sec.page, section: sec.index, prop: 'text' }, signal);
+  return { title: sec.page, html: j.parse.text };
+}
+
+/** 那一节的摘要：第一段文字 + 第一张图 */
+async function sectionSummary(lang, title, sec, signal) {
+  const art = await getArticle(lang, title, { signal });
+  const doc = parseWikiHtml(art.html);
+  const text = (n) => n.textContent.replace(/\[[^\]]{1,12}\]/g, '').replace(/\s+/g, ' ').trim();
+  const para = [...doc.querySelectorAll('p')].find((p) => !p.closest('table') && text(p));
+  let extract = para ? text(para) : '';
+  let display = sec.line;
+  // 表格里的一行：名字用行首单元格（简体），简介用最长的那一格（英文列表有一列说明），没有就把各格连起来
+  const rows = doc.querySelectorAll('tr');
+  const row = !sec.index && rows.length ? rows[rows.length - 1] : null;
+  if (row) {
+    for (const n of row.querySelectorAll('.sortkey, .sr-only, sup.reference')) n.remove(); // 排序键、读屏用的隐藏字、注释编号
+    const cells = [...row.querySelectorAll('th, td')].map(text).filter(Boolean);
+    const th = row.querySelector('th') ? text(row.querySelector('th')) : '';
+    if (th && th.length <= 20) display = th; // 英文那格还带着罗马字和图鉴编号，太长就用锚点名
+    if (!extract) {
+      const long = cells.reduce((a, b) => (b.length > a.length ? b : a), '');
+      extract = long.length >= 40 ? long : cells.join(' · ');
+    }
+  }
+  const img = doc.querySelector('img[src]');
+  let thumb = img?.getAttribute('src') || '';
+  if (thumb.startsWith('//')) thumb = 'https:' + thumb;
+  return {
+    title,
+    display,
+    description: `「${sec.page}」里的${row ? '一项' : '一节'}`,
+    extract,
+    thumb,
+    url: wikiUrl(lang, sec.page) + '#' + encodeURIComponent(String(sec.anchor).replace(/ /g, '_')),
+  };
 }
