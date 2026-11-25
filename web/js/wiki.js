@@ -319,6 +319,8 @@ async function exactTitle(wiki, title, signal) {
     labels: Object.fromEntries(Object.entries(links).map(([l, t]) => [l, stripDisambig(t)])),
     desc: '',
     via: redirect ? `${redirect.from} → ${redirect.to}` : '',
+    // 重定向到别的条目里的一个小节（例：米立龙 → 第九世代宝可梦列表#米立龍）：这个页面不是它本身
+    section: redirect?.tofragment || '',
   };
 }
 
@@ -419,11 +421,16 @@ export async function findArticles(query, { signal } = {}) {
   const wikis = lang === 'ja' ? ['ja'] : lang === 'han' ? ['zh', 'ja'] : ['en'];
   let res = null;
   let disambig = null;
+  let sectionHit = null; // 只是重定向到某个列表的小节：先去 Wikidata 找它自己的条目，找不到再用
   for (const w of wikis) {
     const hit = await exactTitle(w, q, signal);
     if (hit?.disambig) {
       disambig = hit;
       break;
+    }
+    if (hit?.section) {
+      sectionHit = sectionHit || hit;
+      continue;
     }
     if (hit) {
       res = { list: [hit], kind: 'title' };
@@ -435,6 +442,12 @@ export async function findArticles(query, { signal } = {}) {
     if (list.length) res = { list, kind: 'disambig' };
   }
   if (!res) res = { list: (await searchTerms(q, { signal, jaFirst: false })).map(fromCandidate).filter(Boolean), kind: 'search' };
+  if (sectionHit && res.kind === 'search') {
+    // 搜索结果里有名字完全一样的（米立龙 → シャリタツ / Tatsugiri）就直接打开它，没有才退回那个小节
+    const same = res.list.find((a) => Object.values(a.labels).includes(q));
+    if (same) res = { list: [same], kind: 'title' };
+    else if (!res.list.length) res = { list: [sectionHit], kind: 'title' };
+  }
   return remember(findCache, q, res, 100);
 }
 
