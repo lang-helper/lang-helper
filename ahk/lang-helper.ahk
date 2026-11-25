@@ -499,7 +499,7 @@ OverPopupClose() {
 
 ; 按下快捷键。kind = translate | polish | input | wiki
 Invoke(kind) {
-    global gOrigHwnd, gSavedClip, gHasSaved
+    global gOrigHwnd, gSavedClip, gHasSaved, gShownAt
     t0 := A_TickCount
     popup := FindPopup()
     active := WinExist("A")
@@ -549,19 +549,19 @@ Invoke(kind) {
         RestoreClip()
         return
     }
-    ; Alt+S 而弹窗停在翻译页：先在屏幕外切到 wiki 速查页，切好了再拿出来——看不到翻译界面闪一下
-    wikiSwitch := kind = "wiki" && PageOf(hwnd) != PAGE_WIKI
-    wasShown := IsVisible(hwnd) && !IsOffscreen(hwnd)
-    ox := 0, oy := 0
-    if wasShown
-        try WinGetPos(&ox, &oy, , , hwnd)
-    if wikiSwitch
-        WinMove(OFFSCREEN, OFFSCREEN, , , hwnd)
-    else if !IsVisible(hwnd) || IsOffscreen(hwnd)   ; 屏幕外的（后台准备的）也挪到鼠标旁边
+    if !IsVisible(hwnd) || IsOffscreen(hwnd)   ; 屏幕外的（后台准备的）也挪到鼠标旁边
         PlaceNearMouse(hwnd)
+    ; Alt+S 而弹窗停在翻译页：切到 wiki 速查页的这一会儿把窗口设成全透明——
+    ; 窗口还在原位、能拿到焦点（按键送得进去），只是看不见翻译界面。切好了再显示出来。
+    ; （以前是挪到屏幕外去切：屏幕外的窗口会丢焦点，按键进不去，还被当成「点到别处」收起，结果呼不出来）
+    wikiSwitch := kind = "wiki" && PageOf(hwnd) != PAGE_WIKI
+    if wikiSwitch
+        try WinSetTransparent(0, hwnd)
     tShow := A_TickCount
     if !ShowPopup(hwnd, kind = "wiki") {
         DebugLog("弹窗没能激活，放弃这次操作")
+        if wikiSwitch
+            try WinSetTransparent("Off", hwnd)
         RestoreClip()
         return
     }
@@ -576,6 +576,8 @@ Invoke(kind) {
         return
     }
     if kind = "wiki" {
+        if wikiSwitch
+            gShownAt := A_TickCount + 4000   ; 切页面时（页面重新加载）别当成「点到别处」收起来
         Send("^!+{F11}")              ; 清空输入框（弹窗页 / 速查页都一样），光标放进去
         if text != "" {
             Send("^v")
@@ -583,14 +585,15 @@ Invoke(kind) {
         }
         Send("^!+{F8}")               ; 查 wiki：弹窗页会跳到速查页（没文字时是空的速查页），速查页直接查
         if wikiSwitch {
-            t1 := A_TickCount         ; 等速查页打开（通常零点几秒），最多 3 秒
-            while PageOf(hwnd) != PAGE_WIKI && A_TickCount - t1 < 3000
+            t1 := A_TickCount         ; 等速查页打开（通常零点几秒），最多 4 秒；没等到也照样显示
+            while PageOf(hwnd) != PAGE_WIKI && A_TickCount - t1 < 4000
                 Sleep(30)
-            if wasShown
-                WinMove(ox, oy, , , hwnd)
-            else
-                PlaceNearMouse(hwnd)
+            DebugLog("切到速查页：" (PageOf(hwnd) = PAGE_WIKI ? "好了" : "4 秒没切过去（页面=" PageOf(hwnd) "）") "，" A_TickCount - t1 " ms")
+            try WinSetTransparent("Off", hwnd)
+            if !IsVisible(hwnd)
+                WinShow(hwnd)
             try WinActivate(hwnd)
+            gShownAt := A_TickCount
         }
         DebugLog("就绪（wiki）：" A_TickCount - t0 " ms")
         SetTimer(RestoreClip, -800)

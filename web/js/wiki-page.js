@@ -22,14 +22,14 @@ import {
   wikiUrl,
 } from './wiki.js';
 import { cleanArticle, loadImages, showPlaceholder } from './wiki-reader.js';
-import { sendToShell, setShellPage, shellCopy, shellKeyboard, shellKind, shellPaste } from './bridge.js';
+import { sendToShell, setShellPage, shellCopy, shellKeyboard, shellKind } from './bridge.js';
 
 const $ = (id) => document.getElementById(id);
 const el = {
   q: $('q'),
   back: $('back'),
   close: $('close'),
-  paste: $('paste'),
+  others: $('others'),
   clear: $('clear'),
   langs: $('langs'),
   status: $('status'),
@@ -280,7 +280,17 @@ function cycleLang(d) {
   pickLang(avail[(i + d + avail.length) % avail.length]);
 }
 
-/** 「不是这个意思？」：搜索更多候选，和现在这个一起列出来挑 */
+/** 输入框里的「其他条目」图标：有好几个候选 → 回到候选列表；只有一个 → 搜索更多 */
+function otherEntries() {
+  if (!state.q) return;
+  if (state.list.length > 1) {
+    if (current()) showPicker();
+    return;
+  }
+  loadMore();
+}
+
+/** 搜索更多候选，和现在这个一起列出来挑 */
 async function loadMore() {
   const a = current();
   const my = state.seq;
@@ -343,6 +353,7 @@ async function aiGuess() {
 function render() {
   const a = current();
   el.idle.hidden = !!state.q;
+  el.others.hidden = !a; // 看着某个条目时才有：回到候选列表 / 搜更多
   el.langs.hidden = !a;
   el.art.hidden = !a;
   el.tools.hidden = !a;
@@ -390,11 +401,11 @@ function renderAlts(a) {
   const ai = actionButton('让 AI 猜（DeepSeek）', aiGuess);
   ai.title = '说不出准确的词时，写个大概或一段描述，让 AI 猜对应的名词（花一点钱），再去维基核对';
   if (a) {
-    const row = make('div', 'wk-alt-actions');
-    if (state.list.length > 1) row.append(actionButton(`‹ 换一个（共 ${state.list.length} 个候选）`, showPicker));
-    else row.append(actionButton('不是这个意思？看看其他条目', loadMore));
-    if (state.kind !== 'ai') row.append(ai);
-    el.alts.append(row);
+    if (state.kind !== 'ai') {
+      const row = make('div', 'wk-alt-actions');
+      row.append(ai);
+      el.alts.append(row);
+    }
   } else if (state.list.length) {
     el.alts.append(candidateList(state.list));
     if (state.kind !== 'ai') {
@@ -682,19 +693,7 @@ function bind() {
     el.q.focus();
     shellKeyboard();
   });
-  el.paste.addEventListener('click', async () => {
-    let t = shellPaste();
-    if (t == null) {
-      try {
-        t = await navigator.clipboard.readText();
-      } catch {
-        t = '';
-      }
-    }
-    t = (t || '').trim();
-    if (!t) return toast('剪贴板是空的');
-    search(t.slice(0, 200));
-  });
+  el.others.addEventListener('click', otherEntries);
   el.back.addEventListener('click', () => toPopup());
   el.close.addEventListener('click', () => sendToShell({ action: 'close' }));
 
@@ -856,7 +855,6 @@ function init() {
   if (shell === 'android') {
     document.body.classList.add('in-app');
     el.close.hidden = false;
-    el.paste.hidden = false;
   }
   if (!matchMedia('(pointer: coarse)').matches) $('keys').hidden = false;
 

@@ -36,11 +36,13 @@
     <div class="wk-box">
       <svg class="wk-glass" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
       <input id="q" type="search" enterkeyhint="search" spellcheck="false" autocomplete="off" placeholder="输入词（中 / 日 / 英），回车查维基">
-      <button type="button" class="wk-icon small" id="paste" hidden title="粘贴并查询" aria-label="粘贴并查询">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9.5 3h5v3h-5z"/></svg>
+      <!-- 其他条目：有好几个候选时回到候选列表，只有一个时去搜更多 -->
+      <button type="button" class="wk-icon small" id="others" hidden title="其他条目" aria-label="其他条目">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6.5h11M9 12h11M9 17.5h11"/><circle cx="4.5" cy="6.5" r="1.1"/><circle cx="4.5" cy="12" r="1.1"/><circle cx="4.5" cy="17.5" r="1.1"/></svg>
       </button>
+      <!-- 清空（退格键形状，和右上角「关闭」的 × 区分开） -->
       <button type="button" class="wk-icon small" id="clear" title="清空" aria-label="清空">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 5H9l-6 7 6 7h11a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/><path d="M17 9l-6 6M11 9l6 6"/></svg>
       </button>
     </div>
     <button type="button" class="wk-icon" id="close" hidden title="关闭" aria-label="关闭">
@@ -54,14 +56,18 @@
   <p class="wk-status" id="status"></p>
   <div class="wk-alts" id="alts" hidden></div>
   <article class="wk-art" id="art" hidden>
-    <h1 class="wk-title" id="title"></h1>
+    <div class="wk-title-row">
+      <h1 class="wk-title" id="title"></h1>
+      <!-- 复制这个语言的条目名（长按 / Alt+L 复制链接） -->
+      <button type="button" class="wk-icon" id="t-copy" title="复制条目名（Alt+C）；长按复制链接" aria-label="复制条目名">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+      </button>
+    </div>
     <p class="wk-desc" id="desc"></p>
     <div class="wk-summary" id="summary"></div>
     <div class="wk-full" id="full" hidden></div>
   </article>
   <div class="wk-idle" id="idle">
-    <p>输入一个词，找它在<b>中文、日语、英语</b>维基百科里对应的条目。</p>
-    <p class="wk-hint">例：边际效应 · 根回し · opportunity cost</p>
     <p class="wk-hint wk-keys" id="keys" hidden>Enter 查询 · ↑↓ 选候选 · Tab 换语言 · Alt+G 让 AI 猜 · Alt+F 全文 · Alt+I 图片 · Alt+C 复制条目名 · Alt+O 在维基百科打开 · Esc 收起</p>
   </div>
 </main>
@@ -77,10 +83,6 @@
   </button>
   <button type="button" class="wk-tool" id="t-smaller" title="字小一点" aria-label="字小一点"><span class="wk-aa small">A</span></button>
   <button type="button" class="wk-tool" id="t-bigger" title="字大一点" aria-label="字大一点"><span class="wk-aa">A</span></button>
-  <button type="button" class="wk-tool" id="t-copy" title="复制条目名（Alt+C）；长按复制链接">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
-    <span>复制</span>
-  </button>
   <a class="wk-tool" id="t-open" target="_blank" rel="noopener noreferrer" title="在维基百科打开（Alt+O）">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg>
     <span>维基百科</span>

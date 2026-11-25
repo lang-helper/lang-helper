@@ -12,25 +12,30 @@ permissions:
   contents: read
   pages: write
   id-token: write
-  # deploy-pages 要列出本次运行上传的网页包（github-pages）。没有这个权限时会报
-  # 「No artifacts named "github-pages" were found」（2026-11-25 同样的配置突然连续失败，加上这个试试）
-  actions: read
+  actions: read # deploy-pages 要列出本次运行上传的网页包（github-pages）
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  # 打包和部署分成两个任务（GitHub 官方模板的写法）。
+  # 2026-11-25 写在同一个任务里时连续失败：网页包刚传完一秒就去找，报「No artifacts named "github-pages" were found」。
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
           path: web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4

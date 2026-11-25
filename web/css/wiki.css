@@ -219,7 +219,9 @@ button { font: inherit; color: inherit; }
 .wk-link:hover { text-decoration: underline; }
 
 .wk-art { font-size: var(--wk-fs); line-height: 1.75; color: var(--fg-out); }
-.wk-title { margin: 4px 0 2px; font-size: 1.6em; line-height: 1.3; font-weight: 700; overflow-wrap: anywhere; }
+.wk-title-row { display: flex; align-items: flex-start; gap: 8px; margin: 4px 0 2px; }
+.wk-title { flex: 1; min-width: 0; margin: 0; font-size: 1.6em; line-height: 1.3; font-weight: 700; overflow-wrap: anywhere; }
+.wk-title-row .wk-icon { flex: none; margin-top: 2px; }
 .wk-desc { margin: 0 0 10px; color: var(--muted); font-size: 0.85em; }
 .wk-summary p { margin: 0 0 0.8em; }
 .wk-summary.loading { opacity: 0.6; }
