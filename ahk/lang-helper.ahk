@@ -8,6 +8,7 @@
 ;
 ; 弹窗里：Enter 执行 · Tab 换目标语言 · Shift+Tab 翻译⇄润色 · Alt+C 复制 · Alt+V 替换原文 · Esc 收起
 ; 点到别的窗口时自动收起；点弹窗左上角的图钉（Alt+P）可以固定（并置顶）。
+; 点标题栏的 × 也只是收起（窗口不关，下次马上出来）；Shift+点 × 才真的关掉。
 ;
 ; 弹窗就是 Edge 的「应用窗口」（--app，没有地址栏和标签页），用独立的配置目录，不影响你平时的 Edge。
 ; AHK → 网页：粘贴文字后按 Ctrl+Alt+Shift+F9（切到翻译）/ F10（切到润色）/ F11（新开输入）/ F12（回到弹窗页）
@@ -50,9 +51,15 @@ global OFFSCREEN := -32000    ; 后台准备弹窗时把窗口开在屏幕外的
 global gLastAlive := 0        ; 最近一次收到网页任何信号（含每分钟的心跳）的时间
 global gSawHeartbeat := false ; 这个弹窗的网页会发心跳（旧版网页不发，就不按心跳判断）
 global STALE_MS := 180000     ; 藏着的弹窗超过 3 分钟没心跳 = 网页被 Edge 冻结 / 回收了
+global gPopupSeen := false    ; 这次运行里见过弹窗窗口（之后窗口没了 = 确实关掉了，不用再等它重新加载）
+global gPopupBornAt := 0      ; 现在这个弹窗窗口是什么时候开的
+global REFRESH_MS := 6 * 3600000  ; 点 × 只是收起、网页一直开着：开了 6 小时就趁你不用时在后台换新（拿到网页的新版本）
 
 SetTitleMatchMode 1       ; 标题「以……开头」
 DetectHiddenWindows true
+; AutoHotkey 默认每次移动 / 显示 / 激活窗口后都停 0.1 秒，弹出一次要白等 0.3 秒；
+; 激活是否成功另有 WinWaitActive 确认，这里只留一点点
+SetWinDelay 10
 
 if A_Args.Length >= 1 && A_Args[1] = "/selftest" {
     INI := A_Args.Length >= 2 ? A_Args[2] : INI
@@ -199,7 +206,8 @@ WaitPopup(seconds) {
             return hwnd
         Sleep(100)
     }
-    return 0
+    ; 等的时候可能被别的线程（快捷键 / 后台准备）打断，回来时已经超时了：最后再找一次
+    return SearchPopup()
 }
 
 ; 暗号「|」前面那一段：popup = 弹窗页，popup-settings = 设置 / 历史页
@@ -240,16 +248,26 @@ EnsurePopup(hideAfter := false) {
     global gPopupHwnd, gLaunchingUntil
     if hwnd := FindPopup()
         return hwnd
-    ; 后台正在准备弹窗：等它出来，不要再开一个
+    ; 正在开弹窗（通常是后台在准备）：等它出来，不要再开一个。
+    ; 你按快捷键时最多等 5 秒（平时 1–2 秒就出来）：万一那个没出来，就自己开，不干等
     if A_TickCount < gLaunchingUntil {
-        if hwnd := WaitPopup((gLaunchingUntil - A_TickCount) / 1000) {
+        wait := (gLaunchingUntil - A_TickCount) / 1000
+        if hwnd := WaitPopup(hideAfter ? wait : Min(wait, 5)) {
             gPopupHwnd := hwnd
             return hwnd
         }
     }
-    ; 页面可能正在重新加载（标题里暂时没有暗号）：先等一下，免得重复开窗口
-    if hwnd := WaitPopup(1.2) {
+    ; 脚本刚启动、还没见过弹窗时：页面可能正在重新加载（标题里暂时没有暗号），先等一下，免得重复开窗口。
+    ; 见过的弹窗窗口没了（关掉了 / Edge 退出了），就不用白等这 1.2 秒
+    if !gPopupSeen && (hwnd := WaitPopup(1.2)) {
         gPopupHwnd := hwnd
+        return hwnd
+    }
+    ; 从「再找一次」到「开 Edge」之间不让别的线程插进来：以前后台准备被快捷键打断，
+    ; 回来后又开了一个，快捷键那边就跟着干等了十几秒
+    Critical("On")
+    if hwnd := FindPopup() {
+        Critical("Off")
         return hwnd
     }
     DebugLog(hideAfter ? "后台准备新的弹窗窗口" : "启动新的弹窗窗口（冷启动，要几秒）")
@@ -267,9 +285,11 @@ EnsurePopup(hideAfter := false) {
     try Run('"' CFG.Edge '" ' args)
     catch as e {
         gLaunchingUntil := 0
+        Critical("Off")
         MsgBox("启动 Edge 失败：`n" e.Message, "lang-helper", "Icon!")
         return 0
     }
+    Critical("Off")
     if hideAfter
         HideOffscreenSoon(prev, t0)
     hwnd := WaitPopup(15)
@@ -326,12 +346,18 @@ IsOffscreen(hwnd) {
 ; 每 30 秒：藏着的弹窗如果超过 3 分钟没心跳（网页被 Edge 冻结 / 回收了，再显示会黑好几秒），
 ; 趁你没在用（2 秒没碰键盘鼠标）把它关掉；WatchPopup 发现窗口没了，会在屏幕外悄悄准备一个新的。
 CheckPopupHealth() {
-    if !gSawHeartbeat || A_TickCount < gLaunchingUntil
+    if A_TickCount < gLaunchingUntil
         return
     hwnd := FindPopup()
     if !hwnd || IsVisible(hwnd)
         return
-    if A_TickCount - gLastAlive < STALE_MS || A_TimeIdlePhysical < 2000
+    ; 点 × 只是收起，网页一直开着：开了 6 小时以上，趁你 1 分钟没碰键盘鼠标在后台换一个新的（拿到网页的新版本）
+    if gPopupBornAt && A_TickCount - gPopupBornAt > REFRESH_MS && A_TimeIdlePhysical >= 60000 {
+        DebugLog("弹窗网页开了 " Round((A_TickCount - gPopupBornAt) / 3600000, 1) " 小时，后台换一个新的")
+        try WinClose(hwnd)
+        return
+    }
+    if !gSawHeartbeat || A_TickCount - gLastAlive < STALE_MS || A_TimeIdlePhysical < 2000
         return
     DebugLog("弹窗网页 " Round((A_TickCount - gLastAlive) / 60000) " 分钟没心跳（被 Edge 冻结 / 回收了），后台换一个新的")
     try WinClose(hwnd)
@@ -345,7 +371,7 @@ WaitPageAlive(since, ms) {
     return gLastAlive >= since
 }
 
-; 弹窗窗口没了（点了标题栏的 ×、Edge 自己退出了……）：等你闲下来（2 秒没碰键盘鼠标）
+; 弹窗窗口没了（Shift+点了标题栏的 ×、Edge 自己退出了……）：等你闲下来（2 秒没碰键盘鼠标）
 ; 再在后台重新准备一个，下次按快捷键还是 0.5 秒左右就出来，不用冷启动 Edge（要 2.5–4 秒）
 RewarmWhenIdle() {
     global gLastRewarm
@@ -437,6 +463,35 @@ PlaceNearMouse(hwnd) {
     WinMove(x, y, , , hwnd)
 }
 
+; 点弹窗标题栏的 × = 收起（和 Esc 一样），窗口不关：下次按快捷键还是马上出来，不用重新启动 Edge（要 2.5–4 秒）。
+; 真要关掉（比如想让网页重新加载）：按住 Shift 再点 ×，或者在弹窗里按 F5 刷新。
+#HotIf OverPopupClose()
+LButton:: {
+    DebugLog("点了 ×：收起（窗口不关）")
+    HidePopup()
+}
+#HotIf
+
+; 鼠标是不是正指着弹窗标题栏的 ×（每次按鼠标左键都会问一下，所以要快：不是弹窗就马上返回）
+OverPopupClose() {
+    if !gPopupHwnd
+        return false
+    CoordMode("Mouse", "Screen")
+    MouseGetPos(&mx, &my, &win)
+    if win != gPopupHwnd
+        return false
+    ; 先粗看：在窗口右上角（× 大约 46×32，按屏幕缩放放大）
+    try WinGetPos(&x, &y, &w, , win)
+    catch
+        return false
+    s := A_ScreenDPI / 96
+    if mx < x + w - 80 * s || my > y + 60 * s
+        return false
+    ; 再问 Edge 这一点是什么：HTCLOSE(20) = 标题栏的 ×
+    try return SendMessage(0x84, 0, (mx & 0xFFFF) | ((my & 0xFFFF) << 16), , win, , , , 200) = 20
+    return false
+}
+
 ; 按下快捷键。kind = translate | polish | input
 Invoke(kind) {
     global gOrigHwnd, gSavedClip, gHasSaved
@@ -522,18 +577,22 @@ RestoreClip() {
 
 ; 每 0.1 秒：处理网页发来的动作；没固定时，弹窗不在前台就收起
 WatchPopup() {
-    global gLastSeq, gBlurTicks, gPopupAlive, gLastAlive, gSawHeartbeat
+    global gLastSeq, gBlurTicks, gPopupAlive, gLastAlive, gSawHeartbeat, gPopupSeen, gPopupBornAt
     hwnd := FindPopup()
     if !hwnd {
         if gPopupAlive {
             gPopupAlive := false
             gSawHeartbeat := false           ; 新窗口重新开始算
             gLastAlive := 0
-            DebugLog("弹窗窗口没了（点了 × / Edge 退出了），闲下来后在后台重新准备")
+            DebugLog("弹窗窗口没了（Shift+点了 × / 后台换新 / Edge 退出了），闲下来后在后台重新准备")
             if CFG.Prewarm
                 SetTimer(RewarmWhenIdle, -2000)
         }
         return
+    }
+    if !gPopupAlive {                        ; 新出现的弹窗窗口
+        gPopupSeen := true
+        gPopupBornAt := A_TickCount
     }
     gPopupAlive := true
     try title := WinGetTitle(hwnd)

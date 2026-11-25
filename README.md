@@ -57,7 +57,7 @@ The service worker is **off** on localhost by default so code changes show up im
 
 ## PC popup (pot-style, no browser tab needed)
 
-Select text in any window → press a hotkey → a small window (`web/popup.html`) opens **centered on the mouse pointer** (pulled back inside the screen if needed). The layout follows pot: the source card on top, whose footer row holds pin · copy · clear · settings · "● source language" (purple dot) … "● target language" (orange dot) · the big Translate / Polish button; result cards from each service below. When polishing Japanese the target chip reads "● 日语 · 自动" and clicking it cycles the register. Colors are pot's grey + cyan; the background is `#161616`, the same as the dark title bar of an Edge app window, so they blend (close with the title bar ×, Esc or Alt+W).
+Select text in any window → press a hotkey → a small window (`web/popup.html`) opens **centered on the mouse pointer** (pulled back inside the screen if needed). The layout follows pot: the source card on top, whose footer row holds pin · copy · clear · settings · "● source language" (purple dot) … "● target language" (orange dot) · the big Translate / Polish button; result cards from each service below. When polishing Japanese the target chip reads "● 日语 · 自动" and clicking it cycles the register. Colors are pot's grey + cyan; the background is `#161616`, the same as the dark title bar of an Edge app window, so they blend (hide it with the title bar ×, Esc or Alt+W; the × only hides the window, so the next hotkey is instant — Shift+click × to really close it).
 
 **Global hotkeys** (configurable in `ahk/lang-helper.ini`):
 
@@ -105,7 +105,7 @@ Clicking the target chip is the same as `Tab`. Short all-kanji words (e.g. 会�
 
 The DeepSeek card uses the same three prompts as the main page: into Japanese = "Write Japanese", into Chinese = "To Chinese" (single words get a dictionary card), into English = "Write English". Yandex and Google use unofficial endpoints (same as pot; no key needed, but strictly speaking they aren't within the providers' terms of use and could stop working at any time); each can be turned off in Settings. Google's text is sent in the request body, not the URL. Bing isn't supported: its free route requires posing as the Edge browser; the official Microsoft Translator API (Azure, 2M characters/month free) would need a key. Baidu isn't supported yet (its API can't be called directly from a web page and would need a proxy). Term lookup is not in the popup (it may become a separate tool later).
 
-The popup hides itself when another window gets focus; a size you set by dragging the edges is remembered. For troubleshooting set `Debug=1` in the ini and every step is logged to `ahk/debug.log`.
+The popup hides itself when another window gets focus; a size you set by dragging the edges is remembered. The hidden page sends a heartbeat once a minute; if it stops for 3 minutes (Edge froze or unloaded it) or the page has been open for 6 hours (so it picks up new versions), the script quietly replaces it off-screen while you're idle. For troubleshooting set `Debug=1` in the ini and every step is logged to `ahk/debug.log`.
 
 **Usage:**
 
