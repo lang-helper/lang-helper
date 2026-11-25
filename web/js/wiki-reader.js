@@ -6,6 +6,8 @@
 //   公式优先用 MathML（浏览器自己排版，不用下载图片）。
 // · 链接：同一个维基里的条目 → 在速查里打开（data-wk-title）；其他链接 → 新窗口打开维基百科。
 
+import { NAMESPACE, parseWikiHtml } from './wiki.js';
+
 const DROP = [
   'script', 'style', 'link', 'meta', 'noscript', 'iframe', 'frame', 'object', 'embed', 'applet', 'base',
   'form', 'input', 'button', 'textarea', 'select', 'video', 'audio', 'source', 'track', 'picture > source', 'svg',
@@ -15,10 +17,6 @@ const DROP = [
   'sup.reference', '.mw-cite-backlink', '.Z3988', '.printfooter', '.shortdescription',
   '.mwe-math-fallback-image-inline', '.mwe-math-fallback-image-display',
 ];
-
-// 不是普通条目的名字空间（文件、分类、模板、帮助……）：在维基百科上打开
-const NAMESPACE =
-  /^(file|image|media|category|wikipedia|wp|help|special|template|portal|talk|user|mediawiki|module|draft|wikt|文件|檔案|档案|图像|圖像|分类|分類|维基百科|維基百科|帮助|幫助|特殊|模板|主题|主題|用户|用戶|讨论|討論|ファイル|画像|カテゴリ|ウィキペディア|ヘルプ|特別|テンプレート|ポータル|利用者|ノート)\s*:/i;
 
 // 图片只允许从维基媒体加载（页面的 CSP 也只放行这些）
 const IMG_HOST = /(^|\.)(wikimedia\.org|wikipedia\.org)$/;
@@ -46,12 +44,7 @@ function isIcon(img) {
  * @returns {HTMLElement}  已经清理好的 <div class="wk-doc">，可以直接放进页面
  */
 export function cleanArticle(html, { lang, images }) {
-  // 样式先用文字替换去掉：DOMParser 解析时也会按页面的 CSP（style-src 'self'）检查，
-  // 每个 style 属性都在控制台报一次错（几百条）。剩下的漏网之鱼下面再按元素删。
-  const pre = String(html)
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/(<[a-z][^<>]*?)\sstyle="[^"]*"/gi, '$1');
-  const doc = new DOMParser().parseFromString(`<!doctype html><body><div class="wk-doc">${pre}</div>`, 'text/html');
+  const doc = parseWikiHtml(`<div class="wk-doc">${html}</div>`);
   const root = doc.body.firstElementChild;
 
   for (const n of root.querySelectorAll(DROP.join(','))) n.remove();

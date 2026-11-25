@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
-<!-- 只连维基百科 / Wikidata；图片只从维基媒体加载（默认不加载，点了才加载） -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.wikimedia.org https://wikimedia.org https://*.wikipedia.org; connect-src 'self' https://*.wikipedia.org https://www.wikidata.org; object-src 'none'; base-uri 'none'; form-action 'none'">
+<!-- 连维基百科 / Wikidata，和「让 AI 猜」用的 DeepSeek（Base URL 可以在设置里改，所以和其他页面一样放行 https:）；
+     图片只从维基媒体加载（默认不加载，点了才加载） -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.wikimedia.org https://wikimedia.org https://*.wikipedia.org; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#161616">
 <title>lang-helper</title>
@@ -61,7 +62,7 @@
   <div class="wk-idle" id="idle">
     <p>输入一个词，找它在<b>中文、日语、英语</b>维基百科里对应的条目。</p>
     <p class="wk-hint">例：边际效应 · 根回し · opportunity cost</p>
-    <p class="wk-hint wk-keys" id="keys" hidden>Enter 查询 · Tab 换语言 · Alt+F 全文 · Alt+I 图片 · Alt+C 复制条目名 · Alt+O 在维基百科打开 · Esc 收起</p>
+    <p class="wk-hint wk-keys" id="keys" hidden>Enter 查询 · ↑↓ 选候选 · Tab 换语言 · Alt+G 让 AI 猜 · Alt+F 全文 · Alt+I 图片 · Alt+C 复制条目名 · Alt+O 在维基百科打开 · Esc 收起</p>
   </div>
 </main>
 

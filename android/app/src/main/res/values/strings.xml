@@ -3,9 +3,9 @@
     <string name="app_name">lang-helper</string>
     <!-- Label in the text-selection menu (PROCESS_TEXT) -->
     <string name="menu_label">lang-helper</string>
-    <!-- 「维基速查」：桌面上单独的图标，和选中文字后菜单里的名字 -->
-    <string name="wiki_name">维基速查</string>
-    <string name="wiki_menu_label">查维基</string>
+    <!-- wiki 速查：桌面上单独的图标「Wiki」，和选中文字后菜单里的名字 -->
+    <string name="wiki_name">Wiki</string>
+    <string name="wiki_menu_label">Wiki</string>
     <string name="offline">没有网络，打不开 lang-helper（第一次打开必须联网）</string>
     <string name="saved">已保存</string>
     <string name="save_failed">保存失败</string>

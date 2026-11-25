@@ -15,6 +15,7 @@ import {
   WIKI_LANGS,
   findArticles,
   moreArticles,
+  guessArticles,
   articleByTitle,
   getSummary,
   getArticle,
@@ -57,13 +58,12 @@ const shell = shellKind();
 
 const state = {
   q: '',
-  list: [], // 候选条目 [{id, links: {zh, ja, en}, labels, desc, via}]
-  exact: false,
-  hit: false, // 有和输入同名的条目（没有时显示的是搜索结果，要提醒一下）
-  sel: 0,
+  list: [], // 候选条目 [{id, links: {zh, ja, en}, labels, desc, via, ai?}]
+  kind: '', // 候选从哪来：title（同名条目）| disambig（消歧义页的义项）| search（搜索）| more（「不是这个意思？」）| ai
+  sel: -1, // 正在看第几个；-1 = 在候选列表里挑
+  aiMs: 0,
   lang: getSettings().wikiLang || 'ja', // 用户上次选的语言
   full: false, // 正在看全文
-  more: null, // 「不是这个？」查到的其他候选（null = 还没查）
   stack: [], // 点正文里的链接之前的状态，返回时恢复
   seq: 0,
   ctrl: null, // 当前查询 / 选中条目的请求
@@ -124,6 +124,7 @@ function setHash() {
   const parts = [];
   if (state.q) parts.push('q=' + encodeURIComponent(state.q));
   if (a && state.lang) parts.push('lang=' + state.lang);
+  if (a?.id && state.list.length > 1) parts.push('id=' + a.id);
   history.replaceState(null, '', location.pathname + location.search + (parts.length ? '#' + parts.join('&') : ''));
 }
 
@@ -147,18 +148,26 @@ function syncTitleBarColor() {
 
 // ───────────────────────── 查询 ─────────────────────────
 
-/** 查一个词。prefetched：弹窗已经查好的结果（省一次请求） */
-async function search(q, { prefetched, lang } = {}) {
+const PICK = -1; // state.sel = PICK：在候选列表里挑
+
+/**
+ * 查一个词。有同名条目、或只有一个候选 → 直接打开；拿不准（消歧义页、搜索出好几个）→ 先列出候选让你挑。
+ * prefetched：弹窗已经查好的结果（省一次请求）；id：直接打开这个候选（弹窗卡片里点的那个）
+ */
+async function search(q, { prefetched, lang, id } = {}) {
   q = q.trim();
   state.ctrl?.abort();
   state.fullCtrl?.abort();
   clearTimeout(state.retry);
   state.q = q;
   state.list = [];
-  state.more = null;
+  state.kind = '';
+  state.sel = PICK;
+  state.full = false;
   state.stack = [];
   if (lang && WIKI_LANGS.includes(lang)) state.lang = lang;
   el.q.value = q;
+  setStatus('');
   render();
   if (!q) {
     setHash();
@@ -169,22 +178,17 @@ async function search(q, { prefetched, lang } = {}) {
   state.ctrl = ctrl;
   setStatus('查找中…', 'busy');
   try {
-    const res = prefetched?.list ? prefetched : await findArticles(q, { signal: ctrl.signal });
+    const res = prefetched?.kind && prefetched.list ? prefetched : await findArticles(q, { signal: ctrl.signal });
     if (my !== state.seq) return;
     state.list = res.list;
-    state.exact = res.exact;
-    state.hit = res.exact;
-    state.sel = 0;
-    if (!res.list.length) {
-      render();
-      notFound(q);
-      setHash();
-      return;
-    }
-    select(0);
+    state.kind = res.kind;
+    const want = id ? res.list.findIndex((a) => a.id === id) : -1;
+    if (want >= 0) select(want);
+    else if (res.list.length === 1) select(0);
+    else showPicker();
   } catch (e) {
     if (my !== state.seq || isAbort(e)) return;
-    failed(e, () => search(q, { lang }));
+    failed(e, () => search(q, { lang, id }));
   }
 }
 
@@ -198,22 +202,28 @@ function failed(e, retry) {
   setStatus('查询失败：' + (e.message || e) + '（检查网络后按 Enter 重试）', 'warn');
 }
 
-function notFound(q) {
-  setStatus('');
-  el.alts.hidden = false;
-  el.alts.replaceChildren(make('p', 'wk-miss', `没找到「${q}」对应的维基条目。换个说法，或直接去维基百科搜：`));
-  const row = make('div', 'wk-alt-links');
-  for (const l of WIKI_LANGS) {
-    const a = make('a', 'wk-chip', `${NAME[l]}维基里搜`);
-    a.href = `https://${l}.wikipedia.org/w/index.php?search=${encodeURIComponent(q)}`;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    row.append(a);
-  }
-  el.alts.append(row);
+/** 候选列表：拿不准的时候先在这里挑 */
+function showPicker() {
+  state.sel = PICK;
+  state.full = false;
+  state.fullCtrl?.abort();
+  const q = state.q;
+  const n = state.list.length;
+  const text = !n
+    ? ''
+    : {
+        disambig: `「${q}」有好几个意思（维基的消歧义页），选一个：`,
+        search: `没有叫「${q}」的条目，下面是搜索结果，选一个：`,
+        more: `「${q}」可能是：`,
+        ai: `AI 猜的候选（DeepSeek · ${(state.aiMs / 1000).toFixed(1)} 秒）。标 ✓ 的维基上有条目：`,
+      }[state.kind] || `选一个：`;
+  setStatus(text, 'note');
+  setHash();
+  render();
+  window.scrollTo({ top: 0 });
 }
 
-/** 选中一个候选：三种语言的摘要一起取（之后切换语言是瞬间的） */
+/** 打开第 i 个候选：三种语言的摘要一起取（之后切换语言是瞬间的） */
 function select(i) {
   state.sel = i;
   state.fullCtrl?.abort();
@@ -225,9 +235,9 @@ function select(i) {
   setStatus(
     a.via
       ? `「${from}」是重定向，条目名是「${to}」`
-      : state.hit
-        ? ''
-        : `没有叫「${state.q}」的条目，下面是搜索到的结果`,
+      : state.kind === 'search' && state.list.length === 1
+        ? `没有叫「${state.q}」的条目，这是最接近的结果`
+        : '',
     'note',
   );
   setHash();
@@ -270,6 +280,64 @@ function cycleLang(d) {
   pickLang(avail[(i + d + avail.length) % avail.length]);
 }
 
+/** 「不是这个意思？」：搜索更多候选，和现在这个一起列出来挑 */
+async function loadMore() {
+  const a = current();
+  const my = state.seq;
+  setStatus('查找其他条目…', 'busy');
+  try {
+    const more = await moreArticles(state.q, a?.id, { signal: state.ctrl?.signal });
+    if (my !== state.seq) return;
+    if (!more.length) {
+      setStatus('没有其他候选了。可以试试「让 AI 猜」。', 'note');
+      return;
+    }
+    state.list = a ? [a, ...more] : more;
+    state.kind = 'more';
+    showPicker();
+  } catch (e) {
+    if (isAbort(e) || my !== state.seq) return;
+    setStatus(e.code === 'RATE' ? e.message : '查找失败：' + (e.message || e), 'warn');
+  }
+}
+
+/** 说不出词时让 AI 猜（DeepSeek，花钱，只在点按钮时调用）；猜完去日文维基核对 */
+async function aiGuess() {
+  const q = (el.q.value || state.q).trim();
+  if (!q) {
+    el.q.focus();
+    return toast('先输入一个词，或者一段描述');
+  }
+  if (!getSettings().apiKey?.trim()) return toast('还没有设置 DeepSeek API key（在设置页里填）');
+  const prev = state.list.length ? snapshot() : null;
+  state.ctrl?.abort();
+  state.fullCtrl?.abort();
+  clearTimeout(state.retry);
+  const my = ++state.seq;
+  const ctrl = new AbortController();
+  state.ctrl = ctrl;
+  state.q = q;
+  setStatus('AI 正在猜，猜完会去维基核对…', 'busy');
+  try {
+    const r = await guessArticles(q, { signal: ctrl.signal });
+    if (my !== state.seq) return;
+    if (prev) state.stack.push(prev); // 返回键回到 AI 猜之前的结果
+    state.list = r.list;
+    state.kind = 'ai';
+    state.aiMs = r.ms;
+    if (!r.list.length) {
+      state.sel = PICK;
+      render();
+      setStatus('AI 没给出候选，换个说法试试。', 'warn');
+      return;
+    }
+    showPicker();
+  } catch (e) {
+    if (my !== state.seq || isAbort(e) || e.code === 'ABORTED') return;
+    setStatus('AI 出错：' + (e.message || e), 'warn');
+  }
+}
+
 // ───────────────────────── 画面 ─────────────────────────
 
 function render() {
@@ -278,15 +346,10 @@ function render() {
   el.langs.hidden = !a;
   el.art.hidden = !a;
   el.tools.hidden = !a;
-  if (!a) {
-    el.langs.replaceChildren();
-    el.alts.hidden = true;
-    if (!state.q) setStatus('');
-    return;
-  }
-  renderLangs(a);
+  if (a) renderLangs(a);
+  else el.langs.replaceChildren();
   renderAlts(a);
-  renderArticle(a);
+  if (a) renderArticle(a);
 }
 
 function labelOf(a, l) {
@@ -300,7 +363,7 @@ function renderLangs(a) {
     b.dataset.lang = l;
     b.disabled = !a.links[l];
     b.setAttribute('aria-pressed', String(l === state.lang));
-    b.title = a.links[l] ? `${NAME[l]}维基：${a.links[l]}` : `${NAME[l]}维基没有对应条目`;
+    b.title = a.links[l] ? `${NAME[l]}维基：${labelOf(a, l)}` : `${NAME[l]}维基没有对应条目`;
     const name = make('span', 'wk-lang-name', a.links[l] ? labelOf(a, l) : '没有条目');
     name.lang = HTML_LANG[l];
     b.append(make('span', 'wk-tag', TAG[l]), name);
@@ -309,66 +372,91 @@ function renderLangs(a) {
   el.langs.replaceChildren(...btns);
 }
 
+function actionButton(text, onClick, cls = 'wk-link') {
+  const b = make('button', cls, text);
+  b.type = 'button';
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+/** 正文上面：挑候选时是候选列表；看条目时是「换一个 / 不是这个意思？ / 让 AI 猜」 */
 function renderAlts(a) {
-  const others = state.exact ? state.more : state.list.filter((x) => x !== a);
   el.alts.replaceChildren();
-  if (state.exact && state.more == null) {
-    const b = make('button', 'wk-link', '不是这个意思？看看其他条目');
-    b.type = 'button';
-    b.addEventListener('click', loadMore);
-    el.alts.append(b);
-  } else if (others?.length) {
-    const head = make('div', 'wk-alts-h', state.exact ? '其他条目' : '其他候选');
-    const list = make('div', 'wk-alt-list');
-    for (const x of others.slice(0, 8)) {
-      const b = make('button', 'wk-alt');
-      b.type = 'button';
-      const names = WIKI_LANGS.filter((l) => x.labels?.[l] || x.links[l]).map((l) => {
-        const s = make('span', null, x.labels?.[l] || x.links[l]);
-        s.lang = HTML_LANG[l];
-        return s;
-      });
-      const line = make('span', 'wk-alt-names');
-      names.forEach((s, i) => (i ? line.append(' · ', s) : line.append(s)));
-      b.append(line);
-      if (x.desc) b.append(make('span', 'wk-alt-desc', x.desc));
-      b.addEventListener('click', () => chooseOther(x));
-      list.append(b);
+  const busy = el.status.classList.contains('busy');
+  if (!state.q || (busy && !state.list.length)) {
+    el.alts.hidden = true;
+    return;
+  }
+  const ai = actionButton('让 AI 猜（DeepSeek）', aiGuess);
+  ai.title = '说不出准确的词时，写个大概或一段描述，让 AI 猜对应的名词（花一点钱），再去维基核对';
+  if (a) {
+    const row = make('div', 'wk-alt-actions');
+    if (state.list.length > 1) row.append(actionButton(`‹ 换一个（共 ${state.list.length} 个候选）`, showPicker));
+    else row.append(actionButton('不是这个意思？看看其他条目', loadMore));
+    if (state.kind !== 'ai') row.append(ai);
+    el.alts.append(row);
+  } else if (state.list.length) {
+    el.alts.append(candidateList(state.list));
+    if (state.kind !== 'ai') {
+      const row = make('div', 'wk-alt-actions');
+      row.append(make('span', 'wk-hint', '都不是？'), ai);
+      el.alts.append(row);
     }
-    el.alts.append(head, list);
-  } else if (state.exact && state.more?.length === 0) {
-    el.alts.append(make('p', 'wk-hint', '没有其他候选。'));
+  } else if (state.kind) {
+    el.alts.append(make('p', 'wk-miss', `没找到「${state.q}」对应的维基条目。换个说法、让 AI 猜，或者直接去维基百科搜：`));
+    const row = make('div', 'wk-alt-links');
+    row.append(actionButton('让 AI 猜（DeepSeek）', aiGuess, 'wk-chip'));
+    for (const l of WIKI_LANGS) {
+      const link = make('a', 'wk-chip', `${NAME[l]}维基里搜`);
+      link.href = `https://${l}.wikipedia.org/w/index.php?search=${encodeURIComponent(state.q)}`;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      row.append(link);
+    }
+    el.alts.append(row);
   }
   el.alts.hidden = !el.alts.childElementCount;
 }
 
-async function loadMore() {
-  const a = current();
-  const my = state.seq;
-  el.alts.replaceChildren(make('p', 'wk-hint', '查找其他条目…'));
-  try {
-    const list = await moreArticles(state.q, a?.id, { signal: state.ctrl?.signal });
-    if (my !== state.seq) return;
-    state.more = list;
-  } catch (e) {
-    if (isAbort(e)) return;
-    state.more = null;
-    toast(e.code === 'RATE' ? e.message : '查找失败');
-  }
-  render();
-}
-
-function chooseOther(x) {
-  if (state.exact) {
-    // 从「其他条目」里选了一个：它放第一，原来精确匹配的那个和其余的留在「其他候选」里
-    state.list = [x, ...state.list, ...(state.more || []).filter((y) => y !== x)];
-    state.exact = false;
-    state.more = null;
-    select(0);
-  } else {
-    select(state.list.indexOf(x));
-  }
-  window.scrollTo({ top: 0 });
+function candidateList(list) {
+  const box = make('div', 'wk-alt-list');
+  list.slice(0, 20).forEach((x, i) => {
+    const ok = WIKI_LANGS.some((l) => x.links[l]);
+    const b = make(ok ? 'button' : 'div', 'wk-alt' + (ok ? '' : ' off'));
+    if (ok) {
+      b.type = 'button';
+      b.addEventListener('click', () => {
+        select(i);
+        window.scrollTo({ top: 0 });
+      });
+    }
+    const line = make('span', 'wk-alt-names');
+    const names = WIKI_LANGS.filter((l) => x.labels?.[l] || x.links[l]);
+    names.forEach((l, k) => {
+      const n = make('span', null, x.labels?.[l] || x.links[l]);
+      n.lang = HTML_LANG[l];
+      if (k) line.append(' · ');
+      line.append(n);
+      if (l === 'ja' && x.ai?.reading && x.ai.reading !== n.textContent) {
+        const r = make('span', 'wk-alt-reading', `（${x.ai.reading}）`);
+        r.lang = 'ja';
+        line.append(r);
+      }
+    });
+    b.append(line);
+    if (x.ai) {
+      b.append(
+        x.ai.verified
+          ? make('span', 'wk-badge ok', '✓ 有条目')
+          : x.ai.verifyFailed
+            ? make('span', 'wk-badge', '没能核对（可能被限流）')
+            : make('span', 'wk-badge warn', '维基没有这个条目'),
+      );
+    }
+    if (x.desc) b.append(make('span', 'wk-alt-desc', x.desc));
+    box.append(b);
+  });
+  return box;
 }
 
 function renderArticle(a) {
@@ -497,9 +585,8 @@ async function followLink(lang, title, hash) {
     state.q = title;
     el.q.value = title;
     state.list = res.list;
-    state.exact = true;
-    state.hit = true;
-    state.more = null;
+    state.kind = 'title';
+    state.full = prev.full;
     state.lang = lang;
     select(0);
     window.scrollTo({ top: 0 });
@@ -513,18 +600,26 @@ function snapshot() {
   return {
     q: state.q,
     list: state.list,
-    exact: state.exact,
-    hit: state.hit,
+    kind: state.kind,
     sel: state.sel,
+    aiMs: state.aiMs,
     lang: state.lang,
     full: state.full,
-    more: state.more,
     scroll: window.scrollY,
   };
 }
 
-/** 返回：先退回点链接之前的条目，再从全文退回摘要。处理了返回 true */
+/**
+ * 返回（Esc / Alt+← / 安卓返回键）。处理了返回 true。顺序：
+ * 从候选里挑的条目 → 全文退回摘要 → 回到候选列表；点链接 / AI 猜之前的结果；全文 → 摘要
+ */
 function back() {
+  const a = current();
+  if (a && state.list.length > 1) {
+    if (state.full) toggleFull();
+    else showPicker();
+    return true;
+  }
   const prev = state.stack.pop();
   if (prev) {
     state.ctrl?.abort();
@@ -533,7 +628,8 @@ function back() {
     state.ctrl = null;
     Object.assign(state, { ...prev, scroll: undefined });
     el.q.value = prev.q;
-    select(prev.sel);
+    if (prev.sel >= 0) select(prev.sel);
+    else showPicker();
     requestAnimationFrame(() => window.scrollTo({ top: prev.scroll || 0 }));
     return true;
   }
@@ -677,6 +773,16 @@ function bind() {
       if (shell === 'ahk' || shell === 'android') sendToShell({ action: 'close' });
       return;
     }
+    if ((ev.key === 'ArrowDown' || ev.key === 'ArrowUp') && !ev.altKey && !ev.ctrlKey && !current()) {
+      const items = [...el.alts.querySelectorAll('button.wk-alt')];
+      if (!items.length) return;
+      ev.preventDefault();
+      const i = items.indexOf(document.activeElement);
+      const next = ev.key === 'ArrowDown' ? (i < 0 ? 0 : Math.min(i + 1, items.length - 1)) : i <= 0 ? -1 : i - 1;
+      if (next < 0) el.q.focus();
+      else items[next].focus();
+      return;
+    }
     if (ev.key === 'Tab' && !ev.ctrlKey && !ev.altKey && !ev.metaKey && current()) {
       ev.preventDefault();
       cycleLang(ev.shiftKey ? -1 : 1);
@@ -702,6 +808,7 @@ function bind() {
         KeyL: copyLink,
         KeyO: () => current() && el.tOpen.click(),
         KeyR: () => search(el.q.value),
+        KeyG: aiGuess,
         KeyW: () => sendToShell({ action: 'close' }),
       }[ev.code];
       if (act) {
@@ -711,13 +818,24 @@ function bind() {
     }
   });
 
+  // 往下滚动后，顶部的中 / 日 / 英收成一排小标签（窄屏时）
+  let scrolled = false;
+  window.addEventListener(
+    'scroll',
+    () => {
+      const now = scrolled ? window.scrollY > 8 : window.scrollY > 80; // 留点余量：收起后页面变短，不来回跳
+      if (now !== scrolled) document.body.classList.toggle('scrolled', (scrolled = now));
+    },
+    { passive: true },
+  );
+
   // 安卓返回键：先退回上一个条目 / 摘要，没有可退的就关闭
   window.lhBack = () => (back() ? 'handled' : '');
 }
 
 function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
-  return { q: p.get('q') || '', lang: p.get('lang') || '' };
+  return { q: p.get('q') || '', lang: p.get('lang') || '', id: p.get('id') || '' };
 }
 
 function init() {
@@ -743,7 +861,7 @@ function init() {
   if (!matchMedia('(pointer: coarse)').matches) $('keys').hidden = false;
 
   // 文字从哪来：网址 # 后面 > 安卓选中的文字 > 空
-  let { q, lang } = readHash();
+  let { q, lang, id } = readHash();
   if (!q && shell === 'android') {
     try {
       q = JSON.parse(window.AndroidBridge.getInitial() || '{}').text || '';
@@ -761,7 +879,7 @@ function init() {
     /* ignore */
   }
   render();
-  if (q) search(q, { prefetched, lang });
+  if (q) search(q, { prefetched, lang, id });
   if (!q || shell === 'ahk') {
     el.q.focus({ preventScroll: true }); // PC 弹窗里光标总在输入框（打字就是换个词查）
     if (!q) shellKeyboard();

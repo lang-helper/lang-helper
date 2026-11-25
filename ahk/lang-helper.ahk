@@ -3,9 +3,9 @@
 ;   Alt+D  把选中的文字放进弹窗，切到「翻译」（单词只出 Yandex；句子 Yandex + DeepSeek）
 ;   Alt+A  把选中的文字放进弹窗，切到「润色」（DeepSeek）
 ;   Alt+Q  打开空白弹窗输入（沿用上次用 Shift+Tab 选的「翻译 / 润色」）；弹窗在前台时再按 = 收起
-;   Alt+S  把选中的文字放进弹窗，直接打开「wiki 速查」（中 / 日 / 英维基百科里对应的条目）
+;   Alt+S  打开「wiki 速查」（中 / 日 / 英维基百科里对应的条目）：选中了文字就直接查它，没选中就打开空的速查页自己输入 / 粘贴
 ;   默认不自动执行：可以先改一改，再按 Enter（ini 里 AutoRun=1 可改成自动执行）
-;   没选中文字时，Alt+D / Alt+A / Alt+S 原样交给当前程序（比如浏览器里 Alt+D 照常跳到地址栏）
+;   没选中文字时，Alt+D / Alt+A 原样交给当前程序（比如浏览器里 Alt+D 照常跳到地址栏）
 ;
 ; 弹窗里：Enter 执行 · Tab 换目标语言 · Shift+Tab 翻译⇄润色 · Alt+C 复制 · Alt+V 替换原文 · Alt+K wiki 速查 · Esc 收起
 ; 点到别的窗口时自动收起；点弹窗左上角的图钉（Alt+P）可以固定（并置顶）。
@@ -533,10 +533,13 @@ Invoke(kind) {
         if ClipWait(0.35)
             text := A_Clipboard
         if Trim(text, " `t`r`n") = "" {
-            ; 没选中文字：还原剪贴板，把按键原样交给当前程序
             RestoreClip()
-            Send(SendableKey(CFG.Keys[kind]))
-            return
+            text := ""
+            ; 没选中文字：Alt+S 照样打开（空的）速查页；Alt+D / Alt+A 把按键原样交给当前程序
+            if kind != "wiki" {
+                Send(SendableKey(CFG.Keys[kind]))
+                return
+            }
         }
     }
 
@@ -574,9 +577,11 @@ Invoke(kind) {
     }
     if kind = "wiki" {
         Send("^!+{F11}")              ; 清空输入框（弹窗页 / 速查页都一样），光标放进去
-        Send("^v")
-        Sleep(60)
-        Send("^!+{F8}")               ; 查 wiki：弹窗页会跳到速查页，速查页直接查
+        if text != "" {
+            Send("^v")
+            Sleep(60)
+        }
+        Send("^!+{F8}")               ; 查 wiki：弹窗页会跳到速查页（没文字时是空的速查页），速查页直接查
         if wikiSwitch {
             t1 := A_TickCount         ; 等速查页打开（通常零点几秒），最多 3 秒
             while PageOf(hwnd) != PAGE_WIKI && A_TickCount - t1 < 3000

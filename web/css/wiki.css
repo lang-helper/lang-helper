@@ -205,8 +205,16 @@ button { font: inherit; color: inherit; }
 .wk-alt:hover { border-color: var(--line-strong); }
 .wk-alt-names { color: var(--fg-out); font-size: 15px; }
 .wk-alt-desc { color: var(--muted); font-size: 13px; }
+.wk-alt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.wk-alt.off { cursor: default; opacity: 0.65; }
+.wk-alt-reading { color: var(--muted); font-size: 13px; }
+.wk-badge { align-self: flex-start; padding: 0 8px; border-radius: 999px; background: var(--surface-3); color: var(--muted); font-size: 12px; }
+.wk-badge.ok { background: var(--accent-soft); color: var(--accent); }
+.wk-badge.warn { color: var(--warn); }
+.wk-alt-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 8px; }
+.wk-alt-actions:first-child { margin-top: 0; }
 .wk-alt-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.wk-chip { padding: 6px 12px; border-radius: 999px; background: var(--surface); text-decoration: none; font-size: 14px; }
+.wk-chip { padding: 6px 12px; border: 0; border-radius: 999px; background: var(--surface); color: var(--accent); text-decoration: none; font: inherit; font-size: 14px; cursor: pointer; }
 .wk-link { padding: 0; border: 0; background: none; color: var(--accent); font-size: 13px; cursor: pointer; }
 .wk-link:hover { text-decoration: underline; }
 
@@ -312,13 +320,25 @@ button { font: inherit; color: inherit; }
   box-shadow: 0 4px 16px rgb(0 0 0 / 0.3);
 }
 
+/* 窄屏（手机、480px 的 PC 弹窗）：中 / 日 / 英竖着排成三行，长英文名也是一行放得下；
+   往下滚动后（body.scrolled）收成一排小标签，省地方，照样一点就切换 */
+@media (max-width: 640px) {
+  .wk-langs { grid-template-columns: 1fr; gap: 4px; }
+  .wk-lang { min-height: 38px; padding: 4px 10px; border-radius: 10px; }
+  .wk-lang-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-line-clamp: unset; }
+  body.scrolled .wk-langs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  body.scrolled .wk-lang { min-height: 32px; padding: 3px 8px; }
+  body.scrolled .wk-lang-name { font-size: 13px; }
+}
+
 /* PC 弹窗（480px 宽的小窗）：紧凑一点 */
 body.in-popup .wk-head { padding: 8px 10px 8px; }
 body.in-popup .wk-main { padding: 8px 14px 76px; }
 body.in-popup .wk-tool { min-width: 46px; height: 46px; }
-body.in-popup .wk-lang { min-height: 42px; }
+body.in-popup .wk-lang { min-height: 36px; }
 
 /* 安卓 App：手指操作，按钮大一点 */
 body.in-app .wk-box { height: 48px; }
-body.in-app .wk-lang { min-height: 54px; }
+body.in-app .wk-lang { min-height: 44px; }
 body.in-app .wk-lang-name { font-size: 16px; }
+body.in-app.scrolled .wk-lang { min-height: 36px; }

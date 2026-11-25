@@ -116,6 +116,7 @@ function toCandidate(e) {
     zh,
     en,
     desc: desc?.value || '',
+    descLang: desc?.lang || '',
     descJa: e.descriptions?.ja?.value || '',
     links: {
       ja: e.sitelinks?.jawiki?.title,
@@ -129,12 +130,13 @@ const searchCache = new Map();
 
 /**
  * 边打字边查。返回候选数组（已带日/中/英名称）。
- * 有日文名的排前面；Wikidata 的匹配排在 Wikipedia 全文搜索前面。
+ * Wikidata 的匹配排在 Wikipedia 全文搜索前面；jaFirst（查名词用）时有日文名的再排到前面。
  */
-export async function searchTerms(query, { signal } = {}) {
+export async function searchTerms(query, { signal, jaFirst = true } = {}) {
   const q = query.trim();
   if (!q) return [];
-  if (searchCache.has(q)) return searchCache.get(q);
+  const jaSort = (list) => (jaFirst ? [...list.filter((c) => c.ja), ...list.filter((c) => !c.ja)] : list);
+  if (searchCache.has(q)) return jaSort(searchCache.get(q));
 
   const lang = detectLang(q);
   if (lang === 'en' && q.length < 2) return [];
@@ -152,11 +154,9 @@ export async function searchTerms(query, { signal } = {}) {
     /^(Category|Template|Wikipedia|Help):/i.test(c.zh + c.en) || // 维基内部页面
     /^[\p{Extended_Pictographic}\p{S}\s]*$/u.test(c.ja || c.en || c.zh); // 表情符号等
   const list = (await getEntities(ids.slice(0, 12), signal)).filter((c) => !junk(c));
-  // 有日文名的排前面（保持原有相对顺序）
-  const sorted = [...list.filter((c) => c.ja), ...list.filter((c) => !c.ja)];
-  searchCache.set(q, sorted);
+  searchCache.set(q, list); // 存相关度顺序，取的时候再按需要排
   if (searchCache.size > 200) searchCache.delete(searchCache.keys().next().value);
-  return sorted;
+  return jaSort(list);
 }
 
 // ───────────── 详情 ─────────────
@@ -309,7 +309,7 @@ async function exactTitle(wiki, title, signal) {
   const j = await getJson(apiUrl(`https://${wiki}.wikipedia.org/w/api.php`, params), signal);
   const p = j.query?.pages?.[0];
   if (!p || p.missing || p.invalid || p.ns !== 0) return null;
-  if (p.pageprops && 'disambiguation' in p.pageprops) return { disambig: true };
+  if (p.pageprops && 'disambiguation' in p.pageprops) return { disambig: true, wiki, title: p.title };
   const links = { [wiki]: p.title };
   for (const l of p.langlinks || []) if (WIKI_LANGS.includes(l.lang) && !links[l.lang]) links[l.lang] = l.title;
   const redirect = (j.query.redirects || [])[0];
@@ -330,37 +330,134 @@ function fromCandidate(c) {
   return { id: c.id, links, labels: { zh: c.zh, ja: c.ja, en: c.en }, desc: c.desc || '', via: '' };
 }
 
+/** 解析维基返回的 HTML（先去掉样式：DOMParser 也按页面 CSP 检查，每个 style 属性都会在控制台报错） */
+export function parseWikiHtml(html) {
+  const pre = String(html)
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/(<[a-z][^<>]*?)\sstyle="[^"]*"/gi, '$1');
+  return new DOMParser().parseFromString(`<!doctype html><body>${pre}`, 'text/html');
+}
+
+// 不是普通条目的名字空间（文件、分类、模板、帮助……）
+export const NAMESPACE =
+  /^(file|image|media|category|wikipedia|wp|help|special|template|portal|talk|user|mediawiki|module|draft|wikt|文件|檔案|档案|图像|圖像|分类|分類|维基百科|維基百科|帮助|幫助|特殊|模板|主题|主題|用户|用戶|讨论|討論|ファイル|画像|カテゴリ|ウィキペディア|ヘルプ|特別|テンプレート|ポータル|利用者|ノート)\s*:/i;
+
+/**
+ * 消歧义页里的义项（维基编者整理好的「这个词可能指……」），按页面上的顺序。
+ * 3 个请求：页面内容 → 各义项对应的 Wikidata 编号 → 各义项的中 / 日 / 英名称和简介。
+ */
+async function disambigSenses(wiki, title, signal) {
+  const params = { action: 'parse', formatversion: 2, page: title, prop: 'text', disableeditsection: 1, disablelimitreport: 1 };
+  if (wiki === 'zh') params.variant = 'zh-cn';
+  const j = await getJson(apiUrl(`https://${wiki}.wikipedia.org/w/api.php`, params), signal);
+  const doc = parseWikiHtml(j.parse?.text || '');
+  const senses = [];
+  for (const li of doc.querySelectorAll('li')) {
+    if (li.closest('.navbox, .toc, .catlinks, .mw-references-wrap, .references')) continue;
+    const a = [...li.querySelectorAll('a[href^="/wiki/"]')].find((x) => !x.classList.contains('new'));
+    if (!a) continue;
+    let t = '';
+    try {
+      t = decodeURIComponent(a.getAttribute('href').slice(6).split('#')[0]).replace(/_/g, ' ');
+    } catch {
+      continue;
+    }
+    if (!t || NAMESPACE.test(t) || senses.some((x) => x.title === t)) continue;
+    const text = li.textContent.replace(/\s+/g, ' ').trim();
+    senses.push({ title: t, text: text.length > 90 ? text.slice(0, 90) + '…' : text });
+    if (senses.length >= 20) break;
+  }
+  if (!senses.length) return [];
+
+  const qp = { action: 'query', formatversion: 2, titles: senses.map((x) => x.title).join('|'), redirects: 1, prop: 'pageprops', ppprop: 'wikibase_item|disambiguation' };
+  if (wiki === 'zh') qp.variant = 'zh-cn';
+  const q = (await getJson(apiUrl(`https://${wiki}.wikipedia.org/w/api.php`, qp), signal)).query || {};
+  const follow = (t) => {
+    let x = t;
+    for (const n of q.normalized || []) if (n.from === x) x = n.to;
+    for (const r of q.redirects || []) if (r.from === x) x = r.to;
+    return x;
+  };
+  const pages = new Map((q.pages || []).map((pg) => [pg.title, pg]));
+  const rows = [];
+  for (const s of senses) {
+    const pg = pages.get(follow(s.title));
+    if (!pg || pg.missing || pg.ns !== 0 || (pg.pageprops && 'disambiguation' in pg.pageprops)) continue;
+    if (rows.some((r) => r.title === pg.title)) continue;
+    rows.push({ title: pg.title, id: pg.pageprops?.wikibase_item || '', text: s.text });
+  }
+  const byId = new Map((await getEntities([...new Set(rows.map((r) => r.id).filter(Boolean))], signal)).map((c) => [c.id, c]));
+  return rows.map((r) => {
+    const a = byId.has(r.id) ? fromCandidate(byId.get(r.id)) : null;
+    if (a) {
+      a.links[wiki] = a.links[wiki] || r.title;
+      // 简介：Wikidata 的中文简介优先，没有就用消歧义页上那一行
+      const c = byId.get(r.id);
+      a.desc = (ZH.includes(c.descLang) && c.desc) || r.text;
+      return a;
+    }
+    return { id: r.id, links: { [wiki]: r.title }, labels: { [wiki]: stripDisambig(r.title) }, desc: r.text, via: '' };
+  });
+}
+
 const findCache = new Map();
 
 /**
  * 输入一个词（任意语言），找它在中 / 日 / 英维基里对应的条目。
- * 先按标题精确查（通常 1 个请求就够）；没有、或是消歧义页，再用 Wikidata 搜索（2–3 个请求）。
- * @returns {Promise<{list: Article[], exact: boolean}>}  Article = {id, links: {zh?, ja?, en?}, labels, desc, via}
+ * ① 按标题精确查（通常 1 个请求就够）→ kind 'title'，一个结果
+ * ② 同名的是消歧义页 → 页面上的义项 → kind 'disambig'
+ * ③ 都没有 → Wikidata 搜索（2–3 个请求，按相关度）→ kind 'search'
+ * @returns {Promise<{list: Article[], kind: 'title'|'disambig'|'search'}>}
+ *   Article = {id, links: {zh?, ja?, en?}, labels, desc, via}
  */
 export async function findArticles(query, { signal } = {}) {
   const q = query.trim();
-  if (!q) return { list: [], exact: false };
+  if (!q) return { list: [], kind: 'search' };
   if (findCache.has(q)) return findCache.get(q);
   const lang = detectLang(q);
   // 只有汉字时先当中文查，中文维基没有再当日文查（如「炊飯器」）
   const wikis = lang === 'ja' ? ['ja'] : lang === 'han' ? ['zh', 'ja'] : ['en'];
   let res = null;
+  let disambig = null;
   for (const w of wikis) {
     const hit = await exactTitle(w, q, signal);
-    if (hit?.disambig) break; // 消歧义页：交给搜索，列出几个候选
+    if (hit?.disambig) {
+      disambig = hit;
+      break;
+    }
     if (hit) {
-      res = { list: [hit], exact: true };
+      res = { list: [hit], kind: 'title' };
       break;
     }
   }
-  if (!res) res = { list: (await searchTerms(q, { signal })).map(fromCandidate).filter(Boolean), exact: false };
+  if (!res && disambig) {
+    const list = await disambigSenses(disambig.wiki, disambig.title, signal);
+    if (list.length) res = { list, kind: 'disambig' };
+  }
+  if (!res) res = { list: (await searchTerms(q, { signal, jaFirst: false })).map(fromCandidate).filter(Boolean), kind: 'search' };
   return remember(findCache, q, res, 100);
 }
 
-/** 「不是这个？」：用 Wikidata 搜索更多候选（去掉已经显示的那个） */
+/** 「不是这个意思？」：用 Wikidata 搜索更多候选（去掉已经显示的那个） */
 export async function moreArticles(query, exceptId, { signal } = {}) {
-  const list = (await searchTerms(query.trim(), { signal })).map(fromCandidate).filter(Boolean);
+  const list = (await searchTerms(query.trim(), { signal, jaFirst: false })).map(fromCandidate).filter(Boolean);
   return list.filter((a) => !exceptId || a.id !== exceptId);
+}
+
+/**
+ * 说不出词时让 AI 猜（DeepSeek，花钱；只在点按钮时调用）。复用查名词的术语助手：
+ * 猜出日语名词候选，再去日文维基验证。有条目的可以直接打开；没有条目的也列出来（标「维基没有条目」）。
+ */
+export async function guessArticles(text, { signal } = {}) {
+  const { candidates, ms, verifyFailed } = await guessTerms(text, { signal });
+  const list = [];
+  for (const c of candidates) {
+    const v = c.verified ? fromCandidate(c.verified) : null;
+    if (v && list.some((x) => x.id && x.id === v.id)) continue;
+    const base = v || { id: '', links: {}, labels: { zh: c.zh, ja: c.ja, en: c.en }, desc: '', via: '' };
+    list.push({ ...base, desc: c.note || base.desc, ai: { ja: c.ja, reading: c.reading, verified: !!v, verifyFailed } });
+  }
+  return { list, ms, verifyFailed };
 }
 
 /** 点了正文里的链接：按标题打开这个条目，顺便拿到其他语言的对应标题 */
@@ -368,8 +465,8 @@ export async function articleByTitle(lang, title, { signal } = {}) {
   const key = `${lang}:${title}`;
   if (findCache.has(key)) return findCache.get(key);
   const hit = await exactTitle(lang, title, signal);
-  if (!hit || hit.disambig) return remember(findCache, key, { list: [], exact: false, disambig: !!hit }, 100);
-  return remember(findCache, key, { list: [hit], exact: true }, 100);
+  if (!hit || hit.disambig) return remember(findCache, key, { list: [], kind: hit ? 'disambig' : 'search' }, 100);
+  return remember(findCache, key, { list: [hit], kind: 'title' }, 100);
 }
 
 const sumCache = new Map();

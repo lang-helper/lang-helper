@@ -559,6 +559,23 @@ async function runWikiCard(text, signal) {
       return;
     }
     const rows = make('div', 'pp-wiki');
+    if (res.list.length > 1) {
+      // 拿不准（消歧义 / 搜索出好几个）：列出前几个候选，点哪个就在速查里打开哪个
+      for (const x of res.list.slice(0, 4)) {
+        const r = make('button', 'pp-wiki-row pp-wiki-cand');
+        r.type = 'button';
+        const names = ['zh', 'ja', 'en'].map((l) => x.labels?.[l] || x.links[l]).filter(Boolean);
+        r.append(make('span', 'pp-wiki-name', [...new Set(names)].join(' · ')));
+        if (x.desc) r.append(make('span', 'pp-wiki-desc', x.desc));
+        r.addEventListener('click', () => openWiki(text, null, x.id));
+        rows.append(r);
+      }
+      rows.append(
+        make('div', 'pp-wiki-note', `${res.kind === 'disambig' ? '有好几个意思' : '没有同名条目，这是搜索结果'}（共 ${res.list.length} 个，Alt+K 打开速查挑）`),
+      );
+      out.replaceWith(rows);
+      return;
+    }
     for (const l of ['zh', 'ja', 'en']) {
       const r = make('button', 'pp-wiki-row');
       r.type = 'button';
@@ -571,7 +588,7 @@ async function runWikiCard(text, signal) {
       rows.append(r);
     }
     if (a.via) rows.append(make('div', 'pp-wiki-note', `重定向：${a.via}`));
-    else if (!res.exact && res.list.length > 1) rows.append(make('div', 'pp-wiki-note', `还有 ${res.list.length - 1} 个候选，打开速查可以选`));
+    else if (res.kind === 'search') rows.append(make('div', 'pp-wiki-note', '没有同名条目，这是最接近的结果'));
     out.replaceWith(rows);
   } catch (e) {
     if (signal.aborted || e.name === 'AbortError') return;
@@ -580,7 +597,7 @@ async function runWikiCard(text, signal) {
 }
 
 /** 在这个窗口里打开 wiki 速查（Alt+K / AHK 的 F8）。回来时恢复现在的原文 */
-function openWiki(text, lang) {
+function openWiki(text, lang, id) {
   const q = (text ?? el.src.value).trim().slice(0, 200);
   const cur = el.src.value.trim();
   sessionStorage.setItem(
@@ -590,7 +607,7 @@ function openWiki(text, lang) {
   if (q && state.wiki?.q === q) sessionStorage.setItem('lh.wikiPrefetch', JSON.stringify(state.wiki));
   else sessionStorage.removeItem('lh.wikiPrefetch');
   cancel();
-  const hash = q ? `#q=${encodeURIComponent(q)}${lang ? '&lang=' + lang : ''}` : '';
+  const hash = q ? `#q=${encodeURIComponent(q)}${lang ? '&lang=' + lang : ''}${id ? '&id=' + id : ''}` : '';
   location.replace('wiki.html' + hash);
 }
 

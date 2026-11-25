@@ -35,8 +35,8 @@
         </activity>
 
         <!--
-          「维基速查」：桌面上单独一个图标（taskAffinity 不同，最近任务里也是单独一项），打开 wiki.html。
-          选中文字 → 菜单里的「查维基」也进这里。
+          「Wiki」（wiki 速查）：桌面上单独一个图标（白底黑色的 W；taskAffinity 不同，最近任务里也是单独一项），打开 wiki.html。
+          选中文字 → 菜单里的「Wiki」也进这里。
         -->
         <activity
             android:name=".WikiActivity"

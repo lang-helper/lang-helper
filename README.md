@@ -11,7 +11,7 @@ A personal Japanese / English writing and translation helper. The web app has fo
 
 Model: DeepSeek `deepseek-flash` (thinking disabled, streaming).
 
-There is also a separate **Wiki quick look** page (维基速查, `wiki.html`): type a word in any language and see the matching Chinese, Japanese and English Wikipedia articles side by side, switch between them instantly, and read the full article without images. It is free (Wikipedia APIs only, no API key). See [Wiki quick look](#wiki-quick-look-维基速查).
+There is also a separate **Wiki quick look** page (维基速查, `wiki.html`): type a word in any language and see the matching Chinese, Japanese and English Wikipedia articles side by side, switch between them instantly, and read the full article without images. It is free (Wikipedia APIs, no API key), except an optional "let AI guess" button. See [Wiki quick look](#wiki-quick-look-维基速查).
 
 ## Layout
 
@@ -25,7 +25,7 @@ web/                    The web app (this directory is what gets deployed to Git
   js/llm.js             DeepSeek streaming client
   js/wiki.js            Term lookup: Wikidata / Wikipedia APIs + AI guess + verification
   js/wiki-ui.js         Term lookup result list
-  wiki.html             Wiki quick look: zh / ja / en articles for one word (PC popup, Android "维基速查" icon, plain web)
+  wiki.html             Wiki quick look: zh / ja / en articles for one word (PC popup, Android "Wiki" icon, plain web)
   js/wiki-page.js       Wiki quick look logic
   js/wiki-reader.js     Cleans Wikipedia article HTML into a reading view (images off until clicked)
   css/wiki.css          Wiki quick look styles
@@ -74,9 +74,9 @@ Select text in any window → press a hotkey → a small window (`web/popup.html
 | `Alt+D` | Put the selected text into the popup, switch to Translate |
 | `Alt+A` | Put the selected text into the popup, switch to Polish |
 | `Alt+Q` | Open an empty popup for typing, keeping the Translate / Polish choice last set with Shift+Tab; press again while the popup is in front to hide it |
-| `Alt+S` | Put the selected text into the popup and open **Wiki quick look** for it (zh / ja / en Wikipedia articles) |
+| `Alt+S` | Open **Wiki quick look** (zh / ja / en Wikipedia articles): looks up the selected text right away; with nothing selected it opens an empty Wiki quick look to type or paste into. Never shows the translate / polish screen (if the popup was last on it, the switch happens off-screen first) |
 
-By default it does **not run automatically**: edit the text first if you like, then press Enter (`AutoRun=1` in the ini makes it run immediately; Wiki quick look always searches right away, it's free). With nothing selected, `Alt+D` / `Alt+A` / `Alt+S` are passed through to the current program (e.g. `Alt+D` still jumps to a browser's address bar). Note that `Alt+Q` takes over Office's "Search" shortcut; change it in the ini if that bothers you.
+By default it does **not run automatically**: edit the text first if you like, then press Enter (`AutoRun=1` in the ini makes it run immediately; Wiki quick look always searches right away, it's free). With nothing selected, `Alt+D` / `Alt+A` are passed through to the current program (e.g. `Alt+D` still jumps to a browser's address bar). Note that `Alt+Q` takes over Office's "Search" shortcut; change it in the ini if that bothers you.
 
 **Keys inside the popup:**
 
@@ -109,7 +109,7 @@ Clicking the target chip is the same as `Tab`. Short all-kanji words (e.g. 会�
 - **Looks like a single word** (short, with no punctuation, particles, verb endings, pronouns or function words) → **Yandex + Google** only; the DeepSeek card stays collapsed until you open it or press `Ctrl+Enter`. Examples: 炊飯器, 根回し, 打ち合わせ, 明日の会議, 电饭煲, 不好意思, follow up.
 - **Sentence** → **Yandex + Google + DeepSeek** together. Examples: 今日は暑い, 確認しました, 修好了, 麻烦你了, Let's go now.
 - When translating, DeepSeek returns only the result, no notes.
-- For a single word there is also a **Wikipedia card**: the matching Chinese / Japanese / English article titles (usually one free request; e.g. 边际效应 → 边际效用 · 限界効用 · Marginal utility, where machine translation says 限界効果). Click a row or press `Alt+K` to open Wiki quick look.
+- For a single word there is also a **Wikipedia card**: the matching Chinese / Japanese / English article titles (usually one free request; e.g. 边际效应 → 边际效用 · 限界効用 · Marginal utility, where machine translation says 限界効果). When the word is ambiguous it lists the first few candidates instead (e.g. Mercury → the planet, the element, the god…). Click a row or press `Alt+K` to open Wiki quick look.
 - History: DeepSeek results are saved as before. A single-word lookup where you didn't open DeepSeek is saved too (Google's result as the main one, both Yandex's and Google's kept), so words show up in history for review.
 
 **Polish**: DeepSeek only, with changes highlighted and notes. Text is polished in its own language; Chinese or mixed Chinese/Japanese is "written as Japanese" (Tab → as English). When polishing into Japanese, click the target chip to change the register (auto → です・ます → タメ口 → formal). The envelope button under the polish result generates 3 email subject candidates from the polished text (light keigo, details in brackets, a 【ご確認】-style tag only when needed); click one to copy it, click the envelope again to regenerate.
@@ -134,14 +134,19 @@ Self-test (for development; briefly opens windows and simulates keystrokes): `Au
 
 ## Wiki quick look (维基速查)
 
-For "what is this called in the other language?" and "let me show you the Wikipedia page". `wiki.html` opens from the PC popup (`Alt+K`, or the global `Alt+S`), from the Android app's separate **维基速查** icon, or as a normal web page (`wiki.html#q=word`).
+For "what is this called in the other language?" and "let me show you the Wikipedia page". `wiki.html` opens from the PC popup (`Alt+K`, or the global `Alt+S`), from the Android app's separate **Wiki** icon, or as a normal web page (`wiki.html#q=word`).
 
-- **Finding the articles**: type a word in Chinese, Japanese or English and press Enter. It first looks the word up as a title on the matching Wikipedia (Chinese for kanji-only input, then Japanese), following redirects and simplified / traditional differences, and gets the other languages' titles from the same request (`prop=langlinks`). Example: 边际效应 → redirect → 边际效用 · 限界効用 · Marginal utility. If there is no such title, or it's a disambiguation page, it falls back to the Wikidata search used by term lookup and lists the candidates. "不是这个意思？" (not this one?) shows other candidates.
-- **Switching**: the 中 / 日 / 英 buttons at the top show each article's title; summaries for all three are fetched in parallel, so switching is instant. `Tab` / `Shift+Tab` or `Alt+1/2/3` switch languages; the last language you picked is remembered. Chinese is always shown in simplified characters.
+- **Finding the articles**: type a word in Chinese, Japanese or English and press Enter. It first looks the word up as a title on the matching Wikipedia (Chinese for kanji-only input, then Japanese), following redirects and simplified / traditional differences, and gets the other languages' titles from the same request (`prop=langlinks`). Example: 边际效应 → redirect → 边际效用 · 限界効用 · Marginal utility. That article opens directly.
+- **When it's not clear what you mean**, it shows a list of candidates first and lets you pick (each with its zh · ja · en names and a one-line description; `↑` / `↓` + `Enter` on the keyboard):
+  - The title is a **disambiguation page** → the meanings listed on that page, in the page's order (e.g. Mercury → planet, element, god, …; 3 requests).
+  - **No article with that title** → Wikidata search results, by relevance. With only one result it opens directly, noting that it's the closest match.
+  - On an article, "不是这个意思？" (not this one?) searches for other candidates; "‹ 换一个" (pick another) and Back return to the list.
+  - **让 AI 猜** (let AI guess, `Alt+G`): when you can't name it, type a rough word or a description. DeepSeek (the term helper prompt from term lookup) suggests names and each one is checked against Japanese Wikipedia: ✓ ones open like any article, the rest are greyed out as "维基没有这个条目" (no article). This is the only part that costs money, and only when you click it.
+- **Switching**: the 中 / 日 / 英 buttons at the top show each article's title (on narrow screens, such as phones and the PC popup, they are three full-width rows so long English names fit on one line; once you scroll down they shrink to one row of small tabs); summaries for all three are fetched in parallel, so switching is instant. `Tab` / `Shift+Tab` or `Alt+1/2/3` switch languages; the last language you picked is remembered. Chinese is always shown in simplified characters.
 - **Full text** (`Alt+F`, or 全文 in the bottom bar): the article is fetched with the MediaWiki parse API and rendered by the page itself (`js/wiki-reader.js`): no scripts, styles, edit links, navboxes, maintenance banners or footnote markers. **Images are not loaded**: each becomes a small "图片" placeholder you can click to load just that one; the 图片 button (`Alt+I`, remembered) loads all of them. Formulas use MathML, so they show without images. Links to other articles open inside Wiki quick look (with their own zh / ja / en titles); `Esc`, `Alt+←` or Android's Back goes back.
 - **Showing it to someone**: big text in a clean reading view; A / **A** in the bottom bar change the size (remembered). 维基百科 (`Alt+O`) opens the real page (Chinese links use `/zh-cn/`). 复制 (`Alt+C`) copies the current title; long-press it (or `Alt+L`) to copy the link.
-- **Privacy**: the word is kept after `#` in the address (`wiki.html#q=…`), which browsers never send to the server. The page's CSP only allows connections to `*.wikipedia.org` and `www.wikidata.org`, and images only from Wikimedia.
-- **Cost / limits**: free. A lookup is usually 1 request plus up to 3 summaries; the full text is 1 more per language (the other two languages are prefetched while you read the full text). The same rate limits as term lookup apply (see below).
+- **Privacy**: the word is kept after `#` in the address (`wiki.html#q=…`), which browsers never send to the server. Images load only from Wikimedia (the page's CSP).
+- **Cost / limits**: free except "让 AI 猜". A lookup is usually 1 request plus up to 3 summaries; the full text is 1 more per language (the other two languages are prefetched while you read the full text). The same rate limits as term lookup apply (see below).
 
 ## Term lookup notes
 
@@ -191,7 +196,7 @@ There is a single screen with two states:
 
 The app also registers a **lang-helper** entry in the text-selection menu (PROCESS_TEXT), but some phones (e.g. HyperOS) don't show third-party entries there.
 
-**维基速查 (Wiki quick look)** is a second launcher icon from the same APK (cyan "W"), so you know you're looking something up on Wikipedia rather than translating. It is a separate entry in Recents and opens `wiki.html` full screen (small windows work too); the text-selection menu also gets a **查维基** entry. Inside: type a word (the clipboard button pastes and searches), switch 中 / 日 / 英, 全文 for the full text without images, A / **A** for text size; Back goes from full text to summary, then closes. It shares settings with lang-helper and needs no API key. The icon arrives with the next APK build (triggered by the `android/` changes); after that, changes to the page itself arrive without reinstalling.
+**Wiki** (Wiki quick look) is a second launcher icon from the same APK (a small black Times New Roman "W" on white, kept small so round icon masks don't clip it), so you know you're looking something up on Wikipedia rather than translating. It is a separate entry in Recents and opens `wiki.html` full screen (small windows work too); the text-selection menu also gets a **Wiki** entry. Inside: type a word (the clipboard button pastes and searches), switch 中 / 日 / 英, 全文 for the full text without images, A / **A** for text size; Back goes from full text to summary, then closes. It shares settings with lang-helper and needs no API key. The icon arrives with the next APK build (triggered by the `android/` changes); after that, changes to the page itself arrive without reinstalling.
 
 The app itself is just a window with a WebView that opens `https://lang-helper.github.io/lang-helper/sheet.html`. **Web changes don't need a reinstall**: after a push, the next time you open it you get the new version. A new APK is only needed when something under `android/` changes.
 
@@ -226,7 +231,7 @@ Every APK must be signed with the same key so new versions install over the old 
 
 `Ctrl+Enter` run (in term lookup: AI guess) · `Esc` cancel / back · `Alt+1/2/3/4` switch mode · `Alt+C` copy result · `Alt+R` retry
 
-Wiki quick look: `Enter` search · `Tab` / `Shift+Tab` or `Alt+1/2/3` switch language · `Alt+F` full text ⇄ summary · `Alt+I` images · `Alt+C` copy title · `Alt+L` copy link · `Alt+O` open on Wikipedia · `Esc` / `Alt+←` back
+Wiki quick look: `Enter` search · `↑` / `↓` pick a candidate · `Alt+G` let AI guess · `Tab` / `Shift+Tab` or `Alt+1/2/3` switch language · `Alt+F` full text ⇄ summary · `Alt+I` images · `Alt+C` copy title · `Alt+L` copy link · `Alt+O` open on Wikipedia · `Esc` / `Alt+←` back
 
 ## Appearance
 

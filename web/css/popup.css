@@ -201,6 +201,8 @@ body.popup {
 .pp-wiki-tag { flex: none; color: var(--muted); font-size: 12px; }
 .pp-wiki-name { overflow-wrap: anywhere; }
 .pp-wiki-note { margin-top: 4px; color: var(--muted); font-size: 12px; }
+.pp-wiki-cand { flex-direction: column; align-items: flex-start; gap: 0; }
+.pp-wiki-desc { color: var(--muted); font-size: 12px; line-height: 1.4; }
 .pp-card-b { padding: 12px 16px 6px; }
 .pp-card.folded .pp-card-b { display: none; }
 .pp-fold svg { transition: transform 0.15s; }
