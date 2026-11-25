@@ -546,7 +546,15 @@ Invoke(kind) {
         RestoreClip()
         return
     }
-    if !IsVisible(hwnd) || IsOffscreen(hwnd)   ; 屏幕外的（后台准备的）也挪到鼠标旁边
+    ; Alt+S 而弹窗停在翻译页：先在屏幕外切到 wiki 速查页，切好了再拿出来——看不到翻译界面闪一下
+    wikiSwitch := kind = "wiki" && PageOf(hwnd) != PAGE_WIKI
+    wasShown := IsVisible(hwnd) && !IsOffscreen(hwnd)
+    ox := 0, oy := 0
+    if wasShown
+        try WinGetPos(&ox, &oy, , , hwnd)
+    if wikiSwitch
+        WinMove(OFFSCREEN, OFFSCREEN, , , hwnd)
+    else if !IsVisible(hwnd) || IsOffscreen(hwnd)   ; 屏幕外的（后台准备的）也挪到鼠标旁边
         PlaceNearMouse(hwnd)
     tShow := A_TickCount
     if !ShowPopup(hwnd, kind = "wiki") {
@@ -569,6 +577,16 @@ Invoke(kind) {
         Send("^v")
         Sleep(60)
         Send("^!+{F8}")               ; 查 wiki：弹窗页会跳到速查页，速查页直接查
+        if wikiSwitch {
+            t1 := A_TickCount         ; 等速查页打开（通常零点几秒），最多 3 秒
+            while PageOf(hwnd) != PAGE_WIKI && A_TickCount - t1 < 3000
+                Sleep(30)
+            if wasShown
+                WinMove(ox, oy, , , hwnd)
+            else
+                PlaceNearMouse(hwnd)
+            try WinActivate(hwnd)
+        }
         DebugLog("就绪（wiki）：" A_TickCount - t0 " ms")
         SetTimer(RestoreClip, -800)
         return
