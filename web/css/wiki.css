@@ -71,10 +71,8 @@ button { font: inherit; color: inherit; }
 .offscreen { position: fixed; left: -9999px; top: 0; }
 
 /* ───── 顶部：输入框 + 中 / 日 / 英 ───── */
+/* 不固定：跟着页面一起滚上去（以前固定在顶部、滚动时收成一排，不太长的页面会来回抖） */
 .wk-head {
-  position: sticky;
-  top: 0;
-  z-index: 5;
   padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
   background: var(--bg);
   border-bottom: 1px solid var(--line);
@@ -322,15 +320,11 @@ button { font: inherit; color: inherit; }
   box-shadow: 0 4px 16px rgb(0 0 0 / 0.3);
 }
 
-/* 窄屏（手机、480px 的 PC 弹窗）：中 / 日 / 英竖着排成三行，长英文名也是一行放得下；
-   往下滚动后（body.scrolled）收成一排小标签，省地方，照样一点就切换 */
+/* 窄屏（手机、480px 的 PC 弹窗）：中 / 日 / 英竖着排成三行，长英文名也是一行放得下 */
 @media (max-width: 640px) {
   .wk-langs { grid-template-columns: 1fr; gap: 4px; }
   .wk-lang { min-height: 38px; padding: 4px 10px; border-radius: 10px; }
   .wk-lang-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-line-clamp: unset; }
-  body.scrolled .wk-langs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  body.scrolled .wk-lang { min-height: 32px; padding: 3px 8px; }
-  body.scrolled .wk-lang-name { font-size: 13px; }
 }
 
 /* PC 弹窗（480px 宽的小窗）：紧凑一点 */
@@ -343,4 +337,3 @@ body.in-popup .wk-lang { min-height: 36px; }
 body.in-app .wk-box { height: 48px; }
 body.in-app .wk-lang { min-height: 44px; }
 body.in-app .wk-lang-name { font-size: 16px; }
-body.in-app.scrolled .wk-lang { min-height: 36px; }

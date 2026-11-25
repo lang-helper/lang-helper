@@ -817,17 +817,6 @@ function bind() {
     }
   });
 
-  // 往下滚动后，顶部的中 / 日 / 英收成一排小标签（窄屏时）
-  let scrolled = false;
-  window.addEventListener(
-    'scroll',
-    () => {
-      const now = scrolled ? window.scrollY > 8 : window.scrollY > 80; // 留点余量：收起后页面变短，不来回跳
-      if (now !== scrolled) document.body.classList.toggle('scrolled', (scrolled = now));
-    },
-    { passive: true },
-  );
-
   // 安卓返回键：先退回上一个条目 / 摘要，没有可退的就关闭
   window.lhBack = () => (back() ? 'handled' : '');
 }
