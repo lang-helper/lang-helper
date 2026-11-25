@@ -3,15 +3,17 @@
 ;   Alt+D  把选中的文字放进弹窗，切到「翻译」（单词只出 Yandex；句子 Yandex + DeepSeek）
 ;   Alt+A  把选中的文字放进弹窗，切到「润色」（DeepSeek）
 ;   Alt+Q  打开空白弹窗输入（沿用上次用 Shift+Tab 选的「翻译 / 润色」）；弹窗在前台时再按 = 收起
+;   Alt+S  把选中的文字放进弹窗，直接打开「wiki 速查」（中 / 日 / 英维基百科里对应的条目）
 ;   默认不自动执行：可以先改一改，再按 Enter（ini 里 AutoRun=1 可改成自动执行）
-;   没选中文字时，Alt+D / Alt+A 原样交给当前程序（比如浏览器里 Alt+D 照常跳到地址栏）
+;   没选中文字时，Alt+D / Alt+A / Alt+S 原样交给当前程序（比如浏览器里 Alt+D 照常跳到地址栏）
 ;
-; 弹窗里：Enter 执行 · Tab 换目标语言 · Shift+Tab 翻译⇄润色 · Alt+C 复制 · Alt+V 替换原文 · Esc 收起
+; 弹窗里：Enter 执行 · Tab 换目标语言 · Shift+Tab 翻译⇄润色 · Alt+C 复制 · Alt+V 替换原文 · Alt+K wiki 速查 · Esc 收起
 ; 点到别的窗口时自动收起；点弹窗左上角的图钉（Alt+P）可以固定（并置顶）。
 ; 点标题栏的 × 也只是收起（窗口不关，下次马上出来）；Shift+点 × 才真的关掉。
 ;
 ; 弹窗就是 Edge 的「应用窗口」（--app，没有地址栏和标签页），用独立的配置目录，不影响你平时的 Edge。
 ; AHK → 网页：粘贴文字后按 Ctrl+Alt+Shift+F9（切到翻译）/ F10（切到润色）/ F11（新开输入）/ F12（回到弹窗页）
+;             / F8（用输入框里的文字查 wiki 速查：弹窗页会跳到同一个窗口里的 wiki.html）
 ; 网页 → AHK：窗口标题 =「lang-helper」+ 看不见的零宽字符暗号（解出来是「popup|动作|序号」），AHK 每 0.1 秒看一次。
 ;
 ; 设置在同目录的 lang-helper.ini（第一次运行时从 lang-helper.example.ini 复制）。
@@ -31,6 +33,7 @@ if A_Args.Length >= 1 && A_Args[1] = "/exit"
 ; 弹窗窗口标题：看得见的「lang-helper」+ 看不见的暗号（U+2063 开头的零宽字符，见 DecodeTitle）
 global TITLE_PREFIX := "lang-helper" Chr(0x2063)
 global PAGE_POPUP := "popup"
+global PAGE_WIKI := "popup-wiki"   ; wiki 速查页（wiki.html）
 global OLD_TITLE := "lang-helper-popup"   ; 旧版网页直接把暗号写在标题里
 global INI := A_ScriptDir "\lang-helper.ini"
 global START_MS := UnixMs()
@@ -102,7 +105,7 @@ LoadConfig(path) {
     if c.Profile = ""
         c.Profile := EnvGet("LOCALAPPDATA") "\lang-helper\edge-popup"
     c.Keys := Map()
-    defaults := Map("translate", "!d", "polish", "!a", "input", "!q")
+    defaults := Map("translate", "!d", "polish", "!a", "input", "!q", "wiki", "!s")
     for kind, def in defaults
         c.Keys[kind] := Trim(IniRead(path, "Hotkeys", kind, def))
     return c
@@ -393,7 +396,8 @@ IsVisible(hwnd) {
     return hwnd && DllCall("IsWindowVisible", "ptr", hwnd)
 }
 
-ShowPopup(hwnd) {
+; wikiOk = 停在 wiki 速查页也行（Alt+S 直接在速查页里查，不用先回弹窗页）
+ShowPopup(hwnd, wikiOk := false) {
     global gShownAt, gBlurTicks
     gShownAt := A_TickCount
     gBlurTicks := 0
@@ -410,8 +414,9 @@ ShowPopup(hwnd) {
     gShownAt := A_TickCount
     if !ok
         return false
-    ; 停在设置 / 历史页时，先回到弹窗页
-    if PageOf(hwnd) != PAGE_POPUP {
+    ; 停在设置 / 历史页（或 wiki 速查页）时，先回到弹窗页
+    page := PageOf(hwnd)
+    if page != PAGE_POPUP && !(wikiOk && page = PAGE_WIKI) {
         Send("^!+{F12}")
         t0 := A_TickCount
         while PageOf(hwnd) != PAGE_POPUP && A_TickCount - t0 < 4000
@@ -492,7 +497,7 @@ OverPopupClose() {
     return false
 }
 
-; 按下快捷键。kind = translate | polish | input
+; 按下快捷键。kind = translate | polish | input | wiki
 Invoke(kind) {
     global gOrigHwnd, gSavedClip, gHasSaved
     t0 := A_TickCount
@@ -500,13 +505,14 @@ Invoke(kind) {
     active := WinExist("A")
     DebugLog("按下 " kind "：弹窗=" (popup ? (IsVisible(popup) ? "显示中" : "隐藏") : "不存在") " 前台=" (active = popup ? "弹窗" : WinGetProcessNameSafe(active)))
 
-    ; 已经在弹窗里：Alt+D / Alt+A = 切到翻译 / 润色，Alt+Q = 收起
+    ; 已经在弹窗里：Alt+D / Alt+A = 切到翻译 / 润色，Alt+Q = 收起，Alt+S = 用输入框里的文字查 wiki 速查
     ; （必须是「看得见」的弹窗：刚隐藏的窗口有时仍被 Windows 当作前台，以前会因此弹不出来）
     if popup && active = popup && IsVisible(popup) {
         switch kind {
             case "translate": Send("^!+{F9}")
             case "polish": Send("^!+{F10}")
             case "input": HidePopup()
+            case "wiki": Send("^!+{F8}")
         }
         return
     }
@@ -543,7 +549,7 @@ Invoke(kind) {
     if !IsVisible(hwnd) || IsOffscreen(hwnd)   ; 屏幕外的（后台准备的）也挪到鼠标旁边
         PlaceNearMouse(hwnd)
     tShow := A_TickCount
-    if !ShowPopup(hwnd) {
+    if !ShowPopup(hwnd, kind = "wiki") {
         DebugLog("弹窗没能激活，放弃这次操作")
         RestoreClip()
         return
@@ -556,6 +562,15 @@ Invoke(kind) {
     if kind = "input" {
         Send("^!+{F11}")              ; 新开输入：清空，回到上次的「翻译 / 润色」
         DebugLog("就绪：" A_TickCount - t0 " ms")
+        return
+    }
+    if kind = "wiki" {
+        Send("^!+{F11}")              ; 清空输入框（弹窗页 / 速查页都一样），光标放进去
+        Send("^v")
+        Sleep(60)
+        Send("^!+{F8}")               ; 查 wiki：弹窗页会跳到速查页，速查页直接查
+        DebugLog("就绪（wiki）：" A_TickCount - t0 " ms")
+        SetTimer(RestoreClip, -800)
         return
     }
     Send("^a")
@@ -678,7 +693,7 @@ SetupTray() {
     ; TrayIcon=0：不显示托盘图标（快捷键照常工作；重新加载 / 退出见文件开头的说明）
     A_IconHidden := !CFG.TrayIcon
     DebugLog("启动：TrayIcon=" (CFG.TrayIcon ? 1 : 0) " Url=" CFG.Url)
-    A_IconTip := "lang-helper（" HotkeyText(CFG.Keys["translate"]) " 翻译 · " HotkeyText(CFG.Keys["polish"]) " 润色 · " HotkeyText(CFG.Keys["input"]) " 输入）"
+    A_IconTip := "lang-helper（" HotkeyText(CFG.Keys["translate"]) " 翻译 · " HotkeyText(CFG.Keys["polish"]) " 润色 · " HotkeyText(CFG.Keys["input"]) " 输入 · " HotkeyText(CFG.Keys["wiki"]) " 维基）"
     m := A_TrayMenu
     m.Delete()
     m.Add("打开弹窗", (*) => Invoke("input"))
@@ -776,6 +791,24 @@ SelfTest(logPath) {
     Sleep(1500)
     SelectCase("划词翻译", "这个bug我已经修好了", "translate", 3000)
     SelectCase("划词润色", "当該ファイルにおける設定を使用する", "polish", 2500)
+
+    ; 划词查维基：弹窗应该停在 wiki 速查页；Esc 收起
+    ed.Value := "边际效应"
+    if Focus() {
+        Send("^a")
+        Sleep(150)
+        Invoke("wiki")
+        popup := FindPopup()
+        t0 := A_TickCount
+        while PageOf(popup) != PAGE_WIKI && A_TickCount - t0 < 4000
+            Sleep(100)
+        out.Push("划词查维基: 弹窗=" (IsVisible(popup) ? "显示" : "没显示") " 页面=" PageOf(popup))
+        Sleep(1500)
+        if WinActive(popup)
+            Send("{Esc}")
+        Sleep(600)
+        out.Push("划词查维基 Esc 后: 弹窗=" (IsVisible(FindPopup()) ? "还开着" : "已收起"))
+    }
 
     ; 没选中文字：不应该弹窗
     ed.Value := "abc"

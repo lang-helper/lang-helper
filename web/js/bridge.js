@@ -5,7 +5,7 @@
 //         AHK 通过键盘把文字送进来（Alt+1..4 切模式、Ctrl+V 粘贴、Ctrl+Enter 执行）；
 //         网页通过「窗口标题」把动作告诉 AHK，AHK 每 0.1 秒看一次。标题栏上只显示「lang-helper」，
 //         后面接一串看不见的零宽字符：U+2063 开头，然后每个字符用 7 个 U+200B(0) / U+200C(1) 表示，
-//         解出来是 `popup|动作|序号`（设置 / 历史页是 `popup-settings|…`）。
+//         解出来是 `popup|动作|序号`（设置 / 历史页是 `popup-settings|…`，wiki 速查页是 `popup-wiki|…`）。
 //         「替换原文」时网页先把结果写进剪贴板，AHK 再切回原窗口按 Ctrl+V。
 //  - webview2：预留（若以后改用 WebView2.ahk）。chrome.webview.postMessage 双向通信。
 //  - android：P4 的安卓壳（android/）。接口见 sheet.js 开头；index.html 在 App 里只当设置 / 历史页。

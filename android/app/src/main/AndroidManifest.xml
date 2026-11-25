@@ -33,5 +33,30 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!--
+          「维基速查」：桌面上单独一个图标（taskAffinity 不同，最近任务里也是单独一项），打开 wiki.html。
+          选中文字 → 菜单里的「查维基」也进这里。
+        -->
+        <activity
+            android:name=".WikiActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale"
+            android:exported="true"
+            android:icon="@mipmap/ic_wiki"
+            android:label="@string/wiki_name"
+            android:resizeableActivity="true"
+            android:roundIcon="@mipmap/ic_wiki"
+            android:taskAffinity="app.langhelper.wiki"
+            android:windowSoftInputMode="adjustResize|stateHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter android:label="@string/wiki_menu_label">
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

@@ -26,10 +26,10 @@ export class RateLimitError extends Error {
   }
 }
 
-async function getJson(url, signal) {
+async function getJson(url, signal, headers) {
   const now = Date.now();
   if (now < coolUntil) throw new RateLimitError(coolUntil - now);
-  const res = await fetch(url, { signal, headers: HEADERS, referrerPolicy: 'no-referrer' });
+  const res = await fetch(url, { signal, headers: { ...HEADERS, ...headers }, referrerPolicy: 'no-referrer' });
   if (res.status === 429) {
     coolStep = Math.min(coolStep + 1, 4);
     const wait = 5000 * 2 ** (coolStep - 1); // 5s, 10s, 20s, 40s
@@ -174,8 +174,9 @@ export async function getJaSummary(title, { signal } = {}) {
   return s;
 }
 
+/** 条目网址。中文用 /zh-cn/（简体显示） */
 export function wikiUrl(lang, title) {
-  return `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
+  return `https://${lang}.wikipedia.org/${lang === 'zh' ? 'zh-cn' : 'wiki'}/${encodeURIComponent(title.replace(/ /g, '_'))}`;
 }
 
 // ───────────── AI 猜 + 验证 ─────────────
@@ -272,4 +273,153 @@ async function verifyJaTitles(terms, signal) {
     if (c) out.set(t, c);
   }
   return out;
+}
+
+// ───────────── wiki 速查：找中 / 日 / 英对应词条，读摘要和全文 ─────────────
+
+export const WIKI_LANGS = ['zh', 'ja', 'en'];
+// 中文维基一律要简体（标题、摘要、全文都转换）
+const ZH_HEADERS = { 'Accept-Language': 'zh-CN' };
+const NOT_FOUND = new Error('没有这个条目');
+NOT_FOUND.code = 'MISSING';
+
+function remember(map, key, value, max) {
+  map.set(key, value);
+  if (map.size > max) map.delete(map.keys().next().value);
+  return value;
+}
+
+/**
+ * 在某个语言的维基里按标题精确查（跟随重定向、繁简转换），一个请求同时拿到其他语言的对应标题。
+ * 例：zh「边际效应」→ 重定向到「边际效用」→ ja「限界効用」、en「Marginal utility」
+ * @returns {Promise<null | {disambig: true} | Article>}
+ */
+async function exactTitle(wiki, title, signal) {
+  const params = {
+    action: 'query',
+    formatversion: 2,
+    titles: title,
+    redirects: 1,
+    converttitles: 1,
+    prop: 'pageprops|langlinks',
+    ppprop: 'wikibase_item|disambiguation',
+    lllimit: 'max',
+  };
+  if (wiki === 'zh') params.variant = 'zh-cn';
+  const j = await getJson(apiUrl(`https://${wiki}.wikipedia.org/w/api.php`, params), signal);
+  const p = j.query?.pages?.[0];
+  if (!p || p.missing || p.invalid || p.ns !== 0) return null;
+  if (p.pageprops && 'disambiguation' in p.pageprops) return { disambig: true };
+  const links = { [wiki]: p.title };
+  for (const l of p.langlinks || []) if (WIKI_LANGS.includes(l.lang) && !links[l.lang]) links[l.lang] = l.title;
+  const redirect = (j.query.redirects || [])[0];
+  return {
+    id: p.pageprops?.wikibase_item || '',
+    links,
+    labels: Object.fromEntries(Object.entries(links).map(([l, t]) => [l, stripDisambig(t)])),
+    desc: '',
+    via: redirect ? `${redirect.from} → ${redirect.to}` : '',
+  };
+}
+
+/** searchTerms 的候选（Wikidata）→ 速查用的格式；三种语言都没有条目的去掉 */
+function fromCandidate(c) {
+  const links = {};
+  for (const l of WIKI_LANGS) if (c.links?.[l]) links[l] = c.links[l];
+  if (!Object.keys(links).length) return null;
+  return { id: c.id, links, labels: { zh: c.zh, ja: c.ja, en: c.en }, desc: c.desc || '', via: '' };
+}
+
+const findCache = new Map();
+
+/**
+ * 输入一个词（任意语言），找它在中 / 日 / 英维基里对应的条目。
+ * 先按标题精确查（通常 1 个请求就够）；没有、或是消歧义页，再用 Wikidata 搜索（2–3 个请求）。
+ * @returns {Promise<{list: Article[], exact: boolean}>}  Article = {id, links: {zh?, ja?, en?}, labels, desc, via}
+ */
+export async function findArticles(query, { signal } = {}) {
+  const q = query.trim();
+  if (!q) return { list: [], exact: false };
+  if (findCache.has(q)) return findCache.get(q);
+  const lang = detectLang(q);
+  // 只有汉字时先当中文查，中文维基没有再当日文查（如「炊飯器」）
+  const wikis = lang === 'ja' ? ['ja'] : lang === 'han' ? ['zh', 'ja'] : ['en'];
+  let res = null;
+  for (const w of wikis) {
+    const hit = await exactTitle(w, q, signal);
+    if (hit?.disambig) break; // 消歧义页：交给搜索，列出几个候选
+    if (hit) {
+      res = { list: [hit], exact: true };
+      break;
+    }
+  }
+  if (!res) res = { list: (await searchTerms(q, { signal })).map(fromCandidate).filter(Boolean), exact: false };
+  return remember(findCache, q, res, 100);
+}
+
+/** 「不是这个？」：用 Wikidata 搜索更多候选（去掉已经显示的那个） */
+export async function moreArticles(query, exceptId, { signal } = {}) {
+  const list = (await searchTerms(query.trim(), { signal })).map(fromCandidate).filter(Boolean);
+  return list.filter((a) => !exceptId || a.id !== exceptId);
+}
+
+/** 点了正文里的链接：按标题打开这个条目，顺便拿到其他语言的对应标题 */
+export async function articleByTitle(lang, title, { signal } = {}) {
+  const key = `${lang}:${title}`;
+  if (findCache.has(key)) return findCache.get(key);
+  const hit = await exactTitle(lang, title, signal);
+  if (!hit || hit.disambig) return remember(findCache, key, { list: [], exact: false, disambig: !!hit }, 100);
+  return remember(findCache, key, { list: [hit], exact: true }, 100);
+}
+
+const sumCache = new Map();
+
+/** 摘要卡片：标题、一句话简介、开头一段、缩略图 */
+export async function getSummary(lang, title, { signal } = {}) {
+  const key = `${lang}:${title}`;
+  if (sumCache.has(key)) return sumCache.get(key);
+  const url = `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`;
+  let j;
+  try {
+    j = await getJson(url, signal, lang === 'zh' ? ZH_HEADERS : undefined);
+  } catch (e) {
+    if (e.message === 'HTTP 404') throw NOT_FOUND;
+    throw e;
+  }
+  const display = (j.titles?.display || j.displaytitle || j.title || title).replace(/<[^>]*>/g, '');
+  return remember(
+    sumCache,
+    key,
+    {
+      title: j.title || title,
+      display,
+      description: j.description || '',
+      extract: j.extract || '',
+      thumb: j.thumbnail?.source || '',
+      url: wikiUrl(lang, j.title || title),
+    },
+    60,
+  );
+}
+
+const artCache = new Map();
+
+/** 全文（MediaWiki 解析好的 HTML，中文转成简体）。插进页面之前要先用 wiki-reader.js 清理 */
+export async function getArticle(lang, title, { signal } = {}) {
+  const key = `${lang}:${title}`;
+  if (artCache.has(key)) return artCache.get(key);
+  const params = {
+    action: 'parse',
+    formatversion: 2,
+    page: title,
+    prop: 'text|displaytitle',
+    redirects: 1,
+    disableeditsection: 1,
+    disablelimitreport: 1,
+    disabletoc: 1,
+  };
+  if (lang === 'zh') params.variant = 'zh-cn';
+  const j = await getJson(apiUrl(`https://${lang}.wikipedia.org/w/api.php`, params), signal);
+  if (j.error) throw j.error.code === 'missingtitle' ? NOT_FOUND : new Error(j.error.info || j.error.code);
+  return remember(artCache, key, { title: j.parse.title, html: j.parse.text }, 8);
 }

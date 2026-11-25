@@ -165,6 +165,9 @@ export function createWikiView({ root, setStatus, onCopy }) {
       detail.append(ext);
     }
     const links = make('div', 'wk-links');
+    // wiki 速查：中 / 日 / 英条目并排看、秒切、不加载图片
+    const q = info.links?.ja || info.links?.zh || info.links?.en;
+    if (q) links.append(link(`wiki.html#q=${encodeURIComponent(q)}`, 'wiki 速查'));
     if (info.links?.ja) links.append(link(wikiUrl('ja', info.links.ja), '日文维基'));
     if (info.links?.zh) links.append(link(wikiUrl('zh', info.links.zh), '中文维基'));
     if (info.links?.en) links.append(link(wikiUrl('en', info.links.en), 'English'));

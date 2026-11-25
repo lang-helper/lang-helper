@@ -176,6 +176,31 @@ body.popup {
 .pp-logo.deepseek { background: #4d6bfe; }
 .pp-logo.yandex { background: #fc3f1d; }
 .pp-logo.google { background: #1a73e8; }
+.pp-logo.wiki { background: #e8e8e8; color: #202122; font-family: "Linux Libertine", Georgia, "Times New Roman", serif; }
+/* 维基百科卡片：中 / 日 / 英对应的条目名，点一下打开 wiki 速查 */
+.pp-wiki { display: flex; flex-direction: column; gap: 2px; }
+.pp-wiki-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 3px 6px;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg-out);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+.pp-wiki-row:hover:not(:disabled) { background: var(--surface-3); }
+.pp-wiki-row:disabled { cursor: default; color: var(--muted); }
+.pp-wiki-tag { flex: none; color: var(--muted); font-size: 12px; }
+.pp-wiki-name { overflow-wrap: anywhere; }
+.pp-wiki-note { margin-top: 4px; color: var(--muted); font-size: 12px; }
 .pp-card-b { padding: 12px 16px 6px; }
 .pp-card.folded .pp-card-b { display: none; }
 .pp-fold svg { transition: transform 0.15s; }

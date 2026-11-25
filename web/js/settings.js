@@ -27,6 +27,10 @@ const DEFAULTS = {
   popupAlt: false, // true = 用备选目标语言，Alt+S 切换
   popupCollapsed: {}, // 各结果卡片是否折叠 { yandex: true, ... }
   popupPinned: false,
+  // wiki 速查
+  wikiLang: 'ja', // 上次看的语言 'zh' | 'ja' | 'en'
+  wikiFont: 0, // 正文字号（px），0 = 默认（手机 19，电脑 17）
+  wikiImages: false, // 全文里加载图片
 };
 
 export function getSettings() {

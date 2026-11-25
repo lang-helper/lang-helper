@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+<!-- 只连维基百科 / Wikidata；图片只从维基媒体加载（默认不加载，点了才加载） -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.wikimedia.org https://wikimedia.org https://*.wikipedia.org; connect-src 'self' https://*.wikipedia.org https://www.wikidata.org; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#161616">
+<title>lang-helper</title>
+<script src="js/theme.js"></script>
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/wiki.css">
+<script type="module" src="js/wiki-page.js"></script>
+<link rel="modulepreload" href="js/wiki.js">
+<link rel="modulepreload" href="js/wiki-reader.js">
+<link rel="modulepreload" href="js/detect.js">
+<link rel="modulepreload" href="js/llm.js">
+<link rel="modulepreload" href="js/settings.js">
+<link rel="modulepreload" href="js/bridge.js">
+</head>
+<body class="wk-page">
+<!--
+  wiki 速查：输入一个词（中 / 日 / 英都行）→ 找到它在中文、日语、英语维基百科里对应的条目。
+  · 顶部：输入框；下面一排「中 / 日 / 英」三个按钮，显示各语言的条目名，点一下切换（摘要已经预先取好，瞬间切换）
+  · 中间：摘要；「全文」显示整篇（默认不加载图片，点占位按钮才加载那一张）
+  · 底部工具栏：全文 / 图片 / 字号 / 复制 / 在维基百科打开
+  三个入口：PC 弹窗（AHK，Alt+K / 全局快捷键）、安卓 App 的「维基速查」图标、普通网页。
+-->
+<header class="wk-head">
+  <div class="wk-search">
+    <button type="button" class="wk-icon" id="back" hidden title="返回翻译（Alt+←）" aria-label="返回翻译">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="wk-box">
+      <svg class="wk-glass" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+      <input id="q" type="search" enterkeyhint="search" spellcheck="false" autocomplete="off" placeholder="输入词（中 / 日 / 英），回车查维基">
+      <button type="button" class="wk-icon small" id="paste" hidden title="粘贴并查询" aria-label="粘贴并查询">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9.5 3h5v3h-5z"/></svg>
+      </button>
+      <button type="button" class="wk-icon small" id="clear" title="清空" aria-label="清空">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <button type="button" class="wk-icon" id="close" hidden title="关闭" aria-label="关闭">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <nav class="wk-langs" id="langs" aria-label="语言" hidden></nav>
+</header>
+
+<main class="wk-main" id="main">
+  <p class="wk-status" id="status"></p>
+  <div class="wk-alts" id="alts" hidden></div>
+  <article class="wk-art" id="art" hidden>
+    <h1 class="wk-title" id="title"></h1>
+    <p class="wk-desc" id="desc"></p>
+    <div class="wk-summary" id="summary"></div>
+    <div class="wk-full" id="full" hidden></div>
+  </article>
+  <div class="wk-idle" id="idle">
+    <p>输入一个词，找它在<b>中文、日语、英语</b>维基百科里对应的条目。</p>
+    <p class="wk-hint">例：边际效应 · 根回し · opportunity cost</p>
+    <p class="wk-hint wk-keys" id="keys" hidden>Enter 查询 · Tab 换语言 · Alt+F 全文 · Alt+I 图片 · Alt+C 复制条目名 · Alt+O 在维基百科打开 · Esc 收起</p>
+  </div>
+</main>
+
+<footer class="wk-tools" id="tools" hidden>
+  <button type="button" class="wk-tool" id="t-full" title="全文 / 摘要（Alt+F）">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14M5 9.5h14M5 14h14M5 18.5h9"/></svg>
+    <span id="t-full-label">全文</span>
+  </button>
+  <button type="button" class="wk-tool" id="t-img" aria-pressed="false" title="加载图片（Alt+I）">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M5 17l4.5-4.5 3 3 2.5-2.5 4 4"/></svg>
+    <span>图片</span>
+  </button>
+  <button type="button" class="wk-tool" id="t-smaller" title="字小一点" aria-label="字小一点"><span class="wk-aa small">A</span></button>
+  <button type="button" class="wk-tool" id="t-bigger" title="字大一点" aria-label="字大一点"><span class="wk-aa">A</span></button>
+  <button type="button" class="wk-tool" id="t-copy" title="复制条目名（Alt+C）；长按复制链接">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+    <span>复制</span>
+  </button>
+  <a class="wk-tool" id="t-open" target="_blank" rel="noopener noreferrer" title="在维基百科打开（Alt+O）">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg>
+    <span>维基百科</span>
+  </a>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

@@ -76,7 +76,12 @@ public class SheetActivity extends Activity {
         web.setWebChromeClient(new Chrome());
         setContentView(web);
         trusted = true; // 第一页就是我们自己的网页；之后每次跳转都会重新判断
-        web.loadUrl(BuildConfig.SHEET_URL);
+        web.loadUrl(startUrl());
+    }
+
+    /** 打开哪一页。WikiActivity（「维基速查」图标）改成 wiki.html */
+    protected String startUrl() {
+        return BuildConfig.SHEET_URL;
     }
 
     /** 选中文字进来的：带着文字；能不能「替换」要看来源 App 是不是在等结果、文字是不是只读 */

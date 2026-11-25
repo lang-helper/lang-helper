@@ -9,6 +9,8 @@
 // 按键：Enter 执行 · Shift+Enter 换行 · Ctrl+Enter 执行并且一定问 DeepSeek · Tab 换目标语言 · Shift+Tab 翻译/润色
 //       Alt+C 复制 · Alt+V 替换原文 · Alt+P 固定 · Alt+R 重试 · Esc 取消/收起
 // AHK 触发键：Ctrl+Alt+Shift+F9 = 切到翻译（不执行），F10 = 切到润色（不执行），F11 = 新开输入（清空）
+//             F8 = 用输入框里的文字打开 wiki 速查（wiki.html，同一个窗口）
+// 像一个词时多一张「维基百科」卡片：中 / 日 / 英对应的条目名，点一下或 Alt+K 打开 wiki 速查。
 
 import { getSettings, saveSettings } from './settings.js';
 import { MODES, PROMPT_VERSION, SUBJECT, buildMessages, buildSubjectMessages } from './prompts.js';
@@ -21,6 +23,7 @@ import { yandexTranslate } from './yandex.js';
 import { googleTranslate } from './google.js';
 import { initBridge, sendToShell, shellKind } from './bridge.js';
 import { LANG, sourceLang, targetFor as pickTarget, looksLikeTerm, REG_SHORT } from './lang.js';
+import { findArticles } from './wiki.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -52,6 +55,7 @@ const state = {
   result: { deepseek: '', yandex: '', google: '' },
   lazyDeepSeek: null, // 单词时 DeepSeek 折叠着：点开时用这个函数去问
   subjectCtrl: null, // 正在生成邮件标题
+  wiki: null, // 维基卡片查到的结果 { q, res }（打开 wiki 速查时带过去，省一次请求）
 };
 
 // ───────────────────────── 小工具 ─────────────────────────
@@ -312,6 +316,7 @@ async function run(opts = {}) {
     const term = looksLikeTerm(text, src) && (s.yandex || s.google);
     if (s.yandex) jobs.push(runMachine('yandex', text, src, tgt, ctrl.signal));
     if (s.google) jobs.push(runMachine('google', text, src, tgt, ctrl.signal));
+    if (term) runWikiCard(text, ctrl.signal); // 免费的维基百科接口；不算进 jobs，不拖慢「记历史」
     if (term && !opts.forceDeepSeek) {
       // 像一个词：DeepSeek 先折叠着，点开才去问
       const c = card('deepseek', 'DeepSeek', 'D', { folded: true });
@@ -530,6 +535,83 @@ async function runMachine(svc, text, src, tgt, signal) {
   }
 }
 
+// ───────────────────────── 维基百科 ─────────────────────────
+
+const WIKI_TAG = { zh: '中', ja: '日', en: '英' };
+const WIKI_HTML_LANG = { zh: 'zh-CN', ja: 'ja', en: 'en' };
+
+/** 像一个词时：查中 / 日 / 英维基里对应的条目名（通常 1 个请求） */
+async function runWikiCard(text, signal) {
+  const c = card('wiki', '维基百科', 'W');
+  c.foot.replaceChildren();
+  c.foot.hidden = true;
+  c.time.textContent = 'Alt+K 速查';
+  el.cards.append(c.root);
+  const out = make('div', 'pp-out muted', '查找对应词条…');
+  c.body.append(out);
+  try {
+    const res = await findArticles(text, { signal });
+    if (signal.aborted) return;
+    state.wiki = { q: text, res };
+    const a = res.list[0];
+    if (!a) {
+      out.textContent = '没找到对应的维基词条（Alt+K 打开速查换个说法）';
+      return;
+    }
+    const rows = make('div', 'pp-wiki');
+    for (const l of ['zh', 'ja', 'en']) {
+      const r = make('button', 'pp-wiki-row');
+      r.type = 'button';
+      r.disabled = !a.links[l];
+      r.title = a.links[l] ? '在 wiki 速查里打开' : '没有对应条目';
+      const name = make('span', 'pp-wiki-name', a.links[l] ? a.labels[l] || a.links[l] : '—');
+      name.lang = WIKI_HTML_LANG[l];
+      r.append(make('span', 'pp-wiki-tag', WIKI_TAG[l]), name);
+      r.addEventListener('click', () => openWiki(text, l));
+      rows.append(r);
+    }
+    if (a.via) rows.append(make('div', 'pp-wiki-note', `重定向：${a.via}`));
+    else if (!res.exact && res.list.length > 1) rows.append(make('div', 'pp-wiki-note', `还有 ${res.list.length - 1} 个候选，打开速查可以选`));
+    out.replaceWith(rows);
+  } catch (e) {
+    if (signal.aborted || e.name === 'AbortError') return;
+    out.textContent = e.code === 'RATE' ? e.message : '查维基失败：' + (e.message || e);
+  }
+}
+
+/** 在这个窗口里打开 wiki 速查（Alt+K / AHK 的 F8）。回来时恢复现在的原文 */
+function openWiki(text, lang) {
+  const q = (text ?? el.src.value).trim().slice(0, 200);
+  const cur = el.src.value.trim();
+  sessionStorage.setItem(
+    'lh.popupRestore',
+    JSON.stringify({ text: el.src.value, mode: state.viewMode, run: !!cur && state.ranText === cur }),
+  );
+  if (q && state.wiki?.q === q) sessionStorage.setItem('lh.wikiPrefetch', JSON.stringify(state.wiki));
+  else sessionStorage.removeItem('lh.wikiPrefetch');
+  cancel();
+  const hash = q ? `#q=${encodeURIComponent(q)}${lang ? '&lang=' + lang : ''}` : '';
+  location.replace('wiki.html' + hash);
+}
+
+// 从 wiki 速查回来：恢复原文。之前执行过、而且是一个词的，自动重新执行（单词只问免费的机翻，DeepSeek 折叠着）；
+// 句子不自动执行，免得再花一次 DeepSeek 的钱
+function restoreFromWiki() {
+  let r = null;
+  try {
+    r = JSON.parse(sessionStorage.getItem('lh.popupRestore') || 'null');
+  } catch {
+    /* ignore */
+  }
+  sessionStorage.removeItem('lh.popupRestore');
+  if (!r?.text) return;
+  el.src.value = r.text;
+  autoGrow();
+  setViewMode(r.mode, false);
+  const t = r.text.trim();
+  if (r.run && state.viewMode === 'translate' && looksLikeTerm(t, srcLang(t))) run();
+}
+
 // 新开输入（Alt+Q）：清空，回到保存的模式
 function fresh() {
   cancel();
@@ -596,6 +678,11 @@ function bind() {
         fresh();
         return;
       }
+      if (ev.code === 'F8') {
+        ev.preventDefault();
+        openWiki();
+        return;
+      }
     }
     if (ev.key === 'Escape') {
       ev.preventDefault();
@@ -621,6 +708,7 @@ function bind() {
         KeyV: () => replaceWith(primaryResult()),
         KeyR: () => run(),
         KeyP: togglePin,
+        KeyK: () => openWiki(),
         KeyW: () => {
           cancel();
           sendToShell({ action: 'close' }); // Alt+W：收起弹窗
@@ -661,6 +749,8 @@ function init() {
     autoGrow();
     setViewMode(sp.get('pmode') === 'polish' ? 'polish' : 'translate', false);
     if (sp.get('run') === '1') run({ forceDeepSeek: sp.get('ds') === '1' });
+  } else {
+    restoreFromWiki();
   }
 }
 
