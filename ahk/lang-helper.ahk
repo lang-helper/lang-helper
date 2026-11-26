@@ -399,17 +399,26 @@ IsVisible(hwnd) {
 ; wikiOk = 停在 wiki 速查页也行（Alt+S 直接在速查页里查，不用先回弹窗页）
 ShowPopup(hwnd, wikiOk := false) {
     global gShownAt, gBlurTicks
-    gShownAt := A_TickCount
+    ; 激活可能要重试好几次（例如开着开始菜单 / 搜索面板时，Windows 不让马上切过来），最多两秒多。
+    ; 这期间别把它当成「点到别处」收起来：以前会在重试中途被藏起来，激活成功了窗口却看不见
+    gShownAt := A_TickCount + 3000
     gBlurTicks := 0
     WinShow(hwnd)
     ok := false
     Loop 3 {                         ; 偶尔一次激活不成功，多试几次
+        if !IsVisible(hwnd)
+            WinShow(hwnd)
         try WinActivate(hwnd)
         if WinWaitActive(hwnd, , 0.7) {
             ok := true
             break
         }
         DebugLog("激活弹窗失败，重试 " A_Index)
+    }
+    if ok && !IsVisible(hwnd) {      ; 保险：激活了却是隐藏的，再显示一次
+        DebugLog("激活后窗口是隐藏的，重新显示")
+        WinShow(hwnd)
+        try WinActivate(hwnd)
     }
     gShownAt := A_TickCount
     if !ok
@@ -576,8 +585,19 @@ Invoke(kind) {
         return
     }
     if kind = "wiki" {
-        if wikiSwitch
-            gShownAt := A_TickCount + 4000   ; 切页面时（页面重新加载）别当成「点到别处」收起来
+        if wikiSwitch {
+            gShownAt := A_TickCount + 6000   ; 切页面时（页面重新加载）别当成「点到别处」收起来
+            ; 网页拿到焦点时会发一个信号（pin-on / pin-off）。弹窗藏久了 Edge 会冻结网页，
+            ; 窗口全透明时它可能一直不醒、收不到按键（2026-11-26 13:58 就是这样：4 秒没切过去）。
+            ; 1 秒内没反应就先把窗口显示出来（会看到一下翻译界面），等网页醒了再发按键
+            if !WaitPageAlive(tShow, 1000) {
+                DebugLog("透明时网页没反应（可能被 Edge 冻结了），先显示出来")
+                try WinSetTransparent("Off", hwnd)
+                try WinActivate(hwnd)
+                ok := WaitPageAlive(tShow, 3000)
+                DebugLog("网页" (ok ? "醒了" : "3 秒还没反应") "（" A_TickCount - tShow " ms）")
+            }
+        }
         Send("^!+{F11}")              ; 清空输入框（弹窗页 / 速查页都一样），光标放进去
         if text != "" {
             Send("^v")
